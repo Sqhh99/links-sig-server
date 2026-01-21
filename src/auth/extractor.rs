@@ -21,6 +21,7 @@ use super::jwt::{decode_token, AccessTokenClaims};
 
 /// Authenticated user information extracted from JWT
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct AuthUser {
     /// User identity (from JWT sub claim)
     pub identity: String,
@@ -36,9 +37,11 @@ pub struct AuthUser {
 ///
 /// Use this for endpoints that support both authenticated and guest access.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct OptionalAuth(pub Option<AuthUser>);
 
 /// Error type for auth extraction
+#[allow(dead_code)]
 pub struct AuthError {
     message: String,
 }
@@ -98,6 +101,7 @@ impl FromRequestParts<AppState> for OptionalAuth {
 /// Similar to `OptionalAuth`, but rejects requests without valid authentication.
 /// Use this for endpoints that require authentication.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct RequiredAuth(pub AuthUser);
 
 impl FromRequestParts<AppState> for RequiredAuth {

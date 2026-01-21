@@ -1,6 +1,12 @@
 //! Token endpoint integration tests
 //!
 //! Tests for POST /token
+//!
+//! These tests require a running test database. Run with:
+//! ```
+//! docker compose up -d postgres-test
+//! cargo test --test token
+//! ```
 
 mod support;
 
@@ -10,7 +16,13 @@ use axum::{
 };
 use tower::ServiceExt;
 
-use support::{body_to_json, build_test_app};
+use support::{body_to_json, build_test_app, setup_test_db, run_test_migrations};
+
+async fn setup() -> sqlx::PgPool {
+    let db = setup_test_db().await;
+    run_test_migrations(&db).await;
+    db
+}
 
 // ============================================================================
 // POST /token
@@ -18,7 +30,8 @@ use support::{body_to_json, build_test_app};
 
 #[tokio::test]
 async fn test_get_token_returns_200() {
-    let app = build_test_app();
+    let db = setup().await;
+    let app = build_test_app(db);
 
     let response = app
         .oneshot(
@@ -39,7 +52,8 @@ async fn test_get_token_returns_200() {
 
 #[tokio::test]
 async fn test_get_token_returns_valid_json() {
-    let app = build_test_app();
+    let db = setup().await;
+    let app = build_test_app(db);
 
     let response = app
         .oneshot(
@@ -77,7 +91,8 @@ async fn test_get_token_returns_valid_json() {
 
 #[tokio::test]
 async fn test_get_token_as_host() {
-    let app = build_test_app();
+    let db = setup().await;
+    let app = build_test_app(db);
 
     let response = app
         .oneshot(
@@ -103,7 +118,8 @@ async fn test_get_token_as_host() {
 
 #[tokio::test]
 async fn test_get_token_without_body_returns_error() {
-    let app = build_test_app();
+    let db = setup().await;
+    let app = build_test_app(db);
 
     let response = app
         .oneshot(
@@ -126,7 +142,8 @@ async fn test_get_token_without_body_returns_error() {
 
 #[tokio::test]
 async fn test_get_token_with_invalid_json_returns_error() {
-    let app = build_test_app();
+    let db = setup().await;
+    let app = build_test_app(db);
 
     let response = app
         .oneshot(
@@ -149,7 +166,8 @@ async fn test_get_token_with_invalid_json_returns_error() {
 
 #[tokio::test]
 async fn test_get_token_with_empty_fields_uses_defaults() {
-    let app = build_test_app();
+    let db = setup().await;
+    let app = build_test_app(db);
 
     // Send minimal JSON - fields should use defaults
     let response = app

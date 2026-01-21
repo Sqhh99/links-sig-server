@@ -2,6 +2,11 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+// ============================================================================
+// LiveKit/Meeting Responses
+// ============================================================================
 
 /// Room information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +52,7 @@ pub struct MessageResponse {
 /// LiveKit Room from API response
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct LiveKitRoom {
     pub sid: Option<String>,
     pub name: String,
@@ -80,6 +86,7 @@ pub struct LiveKitParticipant {
 
 /// List rooms response
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct ListRoomsResponse {
     #[serde(default)]
     pub rooms: Vec<LiveKitRoom>,
@@ -90,4 +97,45 @@ pub struct ListRoomsResponse {
 pub struct ListParticipantsResponse {
     #[serde(default)]
     pub participants: Vec<LiveKitParticipant>,
+}
+
+// ============================================================================
+// Auth Responses
+// ============================================================================
+
+/// Response for verification code request
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestCodeResponse {
+    pub message: String,
+    /// Seconds until another code can be requested
+    pub retry_after_secs: u64,
+}
+
+/// Response for successful registration
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterResponse {
+    pub user_id: Uuid,
+    pub email: String,
+    pub token: String,
+}
+
+/// Response for successful login
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoginResponse {
+    pub user_id: Uuid,
+    pub email: String,
+    pub token: String,
+}
+
+/// User profile response (for future use)
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct UserProfileResponse {
+    pub user_id: Uuid,
+    pub email: String,
+    pub created_at: DateTime<Utc>,
 }

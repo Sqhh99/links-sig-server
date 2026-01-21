@@ -2,6 +2,10 @@
 
 use serde::Deserialize;
 
+// ============================================================================
+// LiveKit/Meeting Requests
+// ============================================================================
+
 /// Token request structure
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,3 +24,35 @@ pub struct CreateRoomRequest {
     #[serde(default)]
     pub name: String,
 }
+
+// ============================================================================
+// Auth Requests
+// ============================================================================
+
+/// Request verification code for registration
+#[derive(Debug, Clone, Deserialize)]
+pub struct RequestRegisterCodeRequest {
+    /// Email address to send the verification code to
+    pub email: String,
+}
+
+/// Complete registration with verification code
+#[derive(Debug, Clone, Deserialize)]
+pub struct RegisterRequest {
+    /// Email address
+    pub email: String,
+    /// Verification code received via email
+    pub code: String,
+    /// Password (will be hashed)
+    pub password: String,
+}
+
+/// Login request
+#[derive(Debug, Clone, Deserialize)]
+pub struct LoginRequest {
+    /// Email address
+    pub email: String,
+    /// Password
+    pub password: String,
+}
+

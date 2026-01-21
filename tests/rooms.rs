@@ -7,6 +7,12 @@
 //! - GET /rooms/{room_name}/participants
 //! - DELETE /rooms/{room_name}/participants/{identity}
 //! - POST /rooms/{room_name}/end
+//!
+//! These tests require a running test database. Run with:
+//! ```
+//! docker compose up -d postgres-test
+//! cargo test --test rooms
+//! ```
 
 mod support;
 
@@ -16,8 +22,14 @@ use axum::{
 };
 use tower::ServiceExt;
 
-use support::{body_to_json, build_test_app, build_test_state_with_livekit, build_test_app_with_state, FakeLiveKitService};
+use support::{body_to_json, build_test_app, build_test_state_with_livekit, build_test_app_with_state, FakeLiveKitService, setup_test_db, run_test_migrations};
 use links_sig_rust_server::types::{LiveKitRoom, LiveKitParticipant};
+
+async fn setup() -> sqlx::PgPool {
+    let db = setup_test_db().await;
+    run_test_migrations(&db).await;
+    db
+}
 
 // ============================================================================
 // GET /rooms/
@@ -25,7 +37,8 @@ use links_sig_rust_server::types::{LiveKitRoom, LiveKitParticipant};
 
 #[tokio::test]
 async fn test_list_rooms_returns_200() {
-    let app = build_test_app();
+    let db = setup().await;
+    let app = build_test_app(db);
 
     let response = app
         .oneshot(
@@ -43,7 +56,8 @@ async fn test_list_rooms_returns_200() {
 
 #[tokio::test]
 async fn test_list_rooms_returns_empty_array() {
-    let app = build_test_app();
+    let db = setup().await;
+    let app = build_test_app(db);
 
     let response = app
         .oneshot(
@@ -66,6 +80,7 @@ async fn test_list_rooms_returns_empty_array() {
 
 #[tokio::test]
 async fn test_list_rooms_with_existing_rooms() {
+    let db = setup().await;
     let fake_livekit = FakeLiveKitService::new().with_room(LiveKitRoom {
         sid: Some("RM_test123".to_string()),
         name: "test-room".to_string(),
@@ -80,7 +95,7 @@ async fn test_list_rooms_with_existing_rooms() {
         active_recording: Some(false),
     });
 
-    let state = build_test_state_with_livekit(fake_livekit);
+    let state = build_test_state_with_livekit(db, fake_livekit);
     let app = build_test_app_with_state(state);
 
     let response = app
@@ -112,7 +127,8 @@ async fn test_list_rooms_with_existing_rooms() {
 
 #[tokio::test]
 async fn test_create_room_returns_201() {
-    let app = build_test_app();
+    let db = setup().await;
+    let app = build_test_app(db);
 
     let response = app
         .oneshot(
@@ -131,7 +147,8 @@ async fn test_create_room_returns_201() {
 
 #[tokio::test]
 async fn test_create_room_returns_valid_json() {
-    let app = build_test_app();
+    let db = setup().await;
+    let app = build_test_app(db);
 
     let response = app
         .oneshot(
@@ -160,7 +177,8 @@ async fn test_create_room_returns_valid_json() {
 
 #[tokio::test]
 async fn test_create_room_without_body_returns_error() {
-    let app = build_test_app();
+    let db = setup().await;
+    let app = build_test_app(db);
 
     let response = app
         .oneshot(
@@ -187,6 +205,7 @@ async fn test_create_room_without_body_returns_error() {
 
 #[tokio::test]
 async fn test_delete_room_returns_200() {
+    let db = setup().await;
     // First create a room, then delete it
     let fake_livekit = FakeLiveKitService::new().with_room(LiveKitRoom {
         sid: Some("RM_delete".to_string()),
@@ -202,7 +221,7 @@ async fn test_delete_room_returns_200() {
         active_recording: Some(false),
     });
 
-    let state = build_test_state_with_livekit(fake_livekit);
+    let state = build_test_state_with_livekit(db, fake_livekit);
     let app = build_test_app_with_state(state);
 
     let response = app
@@ -231,6 +250,7 @@ async fn test_delete_room_returns_200() {
 
 #[tokio::test]
 async fn test_list_participants_returns_200() {
+    let db = setup().await;
     let fake_livekit = FakeLiveKitService::new()
         .with_room(LiveKitRoom {
             sid: Some("RM_participants".to_string()),
@@ -259,7 +279,7 @@ async fn test_list_participants_returns_200() {
             is_publisher: Some(false),
         });
 
-    let state = build_test_state_with_livekit(fake_livekit);
+    let state = build_test_state_with_livekit(db, fake_livekit);
     let app = build_test_app_with_state(state);
 
     let response = app
@@ -288,6 +308,7 @@ async fn test_list_participants_returns_200() {
 
 #[tokio::test]
 async fn test_end_room_returns_200() {
+    let db = setup().await;
     let fake_livekit = FakeLiveKitService::new().with_room(LiveKitRoom {
         sid: Some("RM_end".to_string()),
         name: "room-to-end".to_string(),
@@ -302,7 +323,7 @@ async fn test_end_room_returns_200() {
         active_recording: Some(false),
     });
 
-    let state = build_test_state_with_livekit(fake_livekit);
+    let state = build_test_state_with_livekit(db, fake_livekit);
     let app = build_test_app_with_state(state);
 
     let response = app

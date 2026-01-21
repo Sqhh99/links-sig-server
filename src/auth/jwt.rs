@@ -170,6 +170,7 @@ impl AccessToken {
 }
 
 /// Decode and validate a JWT token
+#[allow(dead_code)]
 pub fn decode_token(
     token: &str,
     api_secret: &str,

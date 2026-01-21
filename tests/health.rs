@@ -1,6 +1,12 @@
 //! Health endpoint integration tests
 //!
 //! Tests for GET /health/
+//!
+//! These tests require a running test database. Run with:
+//! ```
+//! docker compose up -d postgres-test
+//! cargo test --test health
+//! ```
 
 mod support;
 
@@ -10,11 +16,18 @@ use axum::{
 };
 use tower::ServiceExt;
 
-use support::{body_to_json, build_test_app};
+use support::{body_to_json, build_test_app, setup_test_db, run_test_migrations};
+
+async fn setup() -> sqlx::PgPool {
+    let db = setup_test_db().await;
+    run_test_migrations(&db).await;
+    db
+}
 
 #[tokio::test]
 async fn test_health_check_returns_200() {
-    let app = build_test_app();
+    let db = setup().await;
+    let app = build_test_app(db);
 
     let response = app
         .oneshot(
@@ -32,7 +45,8 @@ async fn test_health_check_returns_200() {
 
 #[tokio::test]
 async fn test_health_check_returns_valid_json() {
-    let app = build_test_app();
+    let db = setup().await;
+    let app = build_test_app(db);
 
     let response = app
         .oneshot(

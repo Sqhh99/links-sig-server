@@ -10,13 +10,14 @@ use axum::{
 use crate::handlers::{
     handle_create_room, handle_delete_room, handle_end_room, handle_get_token,
     handle_health, handle_kick_participant, handle_list_participants, handle_list_rooms,
+    handle_login, handle_register, handle_request_register_code,
 };
 use crate::state::AppState;
 
 /// Build the API router with all routes
 ///
 /// Route structure:
-/// - POST /api/token - Generate access token
+/// - POST /api/token - Generate LiveKit access token
 /// - GET /api/rooms - List all rooms
 /// - POST /api/rooms - Create a new room
 /// - DELETE /api/rooms/{room_name} - Delete a room
@@ -24,9 +25,18 @@ use crate::state::AppState;
 /// - DELETE /api/rooms/{room_name}/participants/{identity} - Kick participant
 /// - POST /api/rooms/{room_name}/end - End meeting
 /// - GET /api/health - Health check
+/// - POST /api/auth/register/request-code - Request verification code
+/// - POST /api/auth/register - Complete registration
+/// - POST /api/auth/login - Login
 pub fn build_api_router() -> Router<AppState> {
-    // Auth routes
-    let auth_routes = Router::new().route("/token", post(handle_get_token));
+    // LiveKit token route
+    let token_routes = Router::new().route("/token", post(handle_get_token));
+
+    // User auth routes
+    let user_auth_routes = Router::new()
+        .route("/register/request-code", post(handle_request_register_code))
+        .route("/register", post(handle_register))
+        .route("/login", post(handle_login));
 
     // Room/meeting routes
     let room_routes = Router::new()
@@ -45,7 +55,8 @@ pub fn build_api_router() -> Router<AppState> {
 
     // Combine all routes under /api
     Router::new()
-        .merge(auth_routes)
+        .merge(token_routes)
+        .nest("/auth", user_auth_routes)
         .nest("/rooms", room_routes)
         .nest("/health", health_routes)
 }

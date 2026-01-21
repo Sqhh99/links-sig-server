@@ -10,7 +10,7 @@
 //! - `routes.rs` - Centralized route definitions
 //! - `handlers/` - HTTP request handlers (thin layer)
 //! - `services/` - Business logic layer
-//! - `integrations/` - External service adapters (LiveKit)
+//! - `integrations/` - External service adapters (LiveKit, Database, Email)
 //! - `auth/` - JWT authentication and extractors
 //! - `types/` - Request/Response DTOs and error types
 
@@ -26,15 +26,17 @@ mod types;
 use axum::Router;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tower_http::{
     cors::{Any, CorsLayer},
     services::{ServeDir, ServeFile},
     trace::TraceLayer,
 };
-use tracing::{info, Level};
+use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use crate::config::Config;
+use crate::integrations::{create_pool, run_migrations, SmtpEmailSender};
 use crate::routes::build_api_router;
 use crate::state::AppState;
 
@@ -52,8 +54,30 @@ async fn main() {
     let config = Config::from_env();
     log_startup_info(&config);
 
+    // Initialize database connection pool
+    info!("Connecting to database...");
+    let db = create_pool(&config.database_url)
+        .await
+        .expect("Failed to connect to database");
+    info!("Database connection established");
+
+    // Run migrations
+    info!("Running database migrations...");
+    if let Err(e) = run_migrations(&db).await {
+        error!("Failed to run migrations: {}", e);
+        // Continue anyway - migrations might already be applied
+    } else {
+        info!("Database migrations completed");
+    }
+
+    // Initialize email sender
+    let email = Arc::new(
+        SmtpEmailSender::new(&config)
+            .expect("Failed to initialize email sender"),
+    );
+
     // Create application state
-    let state = AppState::new(config.clone());
+    let state = AppState::new(config.clone(), db, email);
 
     // Build and run server
     let app = build_app(state);
@@ -85,6 +109,21 @@ fn log_startup_info(config: &Config) {
     info!("LiveKit WebSocket: {}", config.livekit_ws_url);
     info!("API Key: {}", config.api_key);
     info!("HTTPS enabled: {}", config.enable_https);
+    info!("Database: {}", mask_connection_string(&config.database_url));
+    info!("SMTP Host: {}", config.smtp_host);
+}
+
+/// Mask sensitive parts of connection string
+fn mask_connection_string(url: &str) -> String {
+    // postgres://user:password@host:port/db -> postgres://user:***@host:port/db
+    if let Some(at_pos) = url.rfind('@') {
+        if let Some(colon_pos) = url[..at_pos].rfind(':') {
+            let prefix = &url[..colon_pos + 1];
+            let suffix = &url[at_pos..];
+            return format!("{}***{}", prefix, suffix);
+        }
+    }
+    url.to_string()
 }
 
 /// Build the complete application router

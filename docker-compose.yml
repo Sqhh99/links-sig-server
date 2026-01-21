@@ -1,0 +1,52 @@
+# Docker Compose configuration for development
+#
+# Services:
+# - postgres: Main database (port 5432)
+# - postgres-test: Isolated test database (port 5433)
+#
+# Usage:
+#   docker compose up -d              # Start all services
+#   docker compose up -d postgres     # Start only main database
+#   docker compose down               # Stop all services
+#   docker compose down -v            # Stop and remove volumes
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: links-sig-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: links_sig
+      POSTGRES_PASSWORD: links_sig_password
+      POSTGRES_DB: links_sig
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U links_sig -d links_sig"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: links-sig-postgres-test
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: links_sig_test
+      POSTGRES_PASSWORD: links_sig_test_password
+      POSTGRES_DB: links_sig_test
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U links_sig_test -d links_sig_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  postgres_test_data:

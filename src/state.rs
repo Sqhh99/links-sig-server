@@ -1,12 +1,14 @@
 //! Application state - Shared dependencies across handlers
 //!
 //! Contains the AppState struct that holds all shared resources
-//! like configuration, LiveKit client, etc.
+//! like configuration, LiveKit client, database pool, email sender, etc.
 
 use std::sync::Arc;
 
+use sqlx::PgPool;
+
 use crate::config::Config;
-use crate::integrations::{LiveKitClient, LiveKitService};
+use crate::integrations::{EmailSender, LiveKitClient, LiveKitService};
 
 /// Application state shared across all handlers
 ///
@@ -18,45 +20,63 @@ pub struct AppState {
     pub config: Arc<Config>,
     /// LiveKit client for room operations
     pub livekit: Arc<dyn LiveKitService>,
+    /// Database connection pool
+    pub db: PgPool,
+    /// Email sender for verification codes
+    pub email: Arc<dyn EmailSender>,
 }
 
 impl AppState {
-    /// Create a new AppState with the given configuration
-    pub fn new(config: Config) -> Self {
+    /// Create a new AppState with all dependencies
+    pub fn new(
+        config: Config,
+        db: PgPool,
+        email: Arc<dyn EmailSender>,
+    ) -> Self {
         let config = Arc::new(config);
         let livekit_client = LiveKitClient::new(config.clone());
 
         Self {
             config,
             livekit: Arc::new(livekit_client),
+            db,
+            email,
+        }
+    }
+
+    /// Create AppState with custom services (for testing)
+    #[allow(dead_code)]
+    pub fn with_services<L, E>(
+        config: Config,
+        db: PgPool,
+        livekit: L,
+        email: E,
+    ) -> Self
+    where
+        L: LiveKitService + 'static,
+        E: EmailSender + 'static,
+    {
+        Self {
+            config: Arc::new(config),
+            livekit: Arc::new(livekit),
+            db,
+            email: Arc::new(email),
         }
     }
 
     /// Create AppState with a custom LiveKit service (for testing)
-    pub fn with_livekit<L: LiveKitService + 'static>(config: Config, livekit: L) -> Self {
+    #[allow(dead_code)]
+    pub fn with_livekit<L: LiveKitService + 'static>(
+        config: Config,
+        db: PgPool,
+        livekit: L,
+        email: Arc<dyn EmailSender>,
+    ) -> Self {
         Self {
             config: Arc::new(config),
             livekit: Arc::new(livekit),
-        }
-    }
-}
-
-/// Test configuration builder
-impl Config {
-    /// Create a test configuration with default values
-    ///
-    /// This is intended for testing purposes only.
-    pub fn for_tests() -> Self {
-        Self {
-            livekit_url: "http://localhost:7880".to_string(),
-            livekit_ws_url: "ws://localhost:7880".to_string(),
-            api_key: "test-api-key".to_string(),
-            api_secret: "test-api-secret".to_string(),
-            server_port: 8081,
-            server_host: "localhost".to_string(),
-            enable_https: false,
-            ssl_cert_file: "./certs/server.crt".to_string(),
-            ssl_key_file: "./certs/server.key".to_string(),
+            db,
+            email,
         }
     }
 }
