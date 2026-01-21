@@ -10,7 +10,7 @@ axum = { version = "0.8", features = ["macros"] }
 axum-extra = { version = "0.10", features = ["typed-header"] }
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 tokio = { version = "1", features = ["full"] }
-tower = "0.5"
+tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
 
 # Async trait support
@@ -44,3 +44,35 @@ prost = "0.12"
 
 # Official LiveKit API SDK
 livekit-api = "0.4"
+
+[dev-dependencies]
+http-body-util = "0.1"
+hyper = "1"
+
+# ============================================================================
+# Build Optimization
+# ============================================================================
+
+[profile.dev]
+# Faster incremental builds
+incremental = true
+# Reduce debug info for faster builds (0=none, 1=limited, 2=full)
+debug = 1
+
+[profile.dev.package."*"]
+# Optimize dependencies in dev mode for faster runtime
+opt-level = 1
+
+[profile.test]
+# Faster test builds
+incremental = true
+debug = 1
+
+[profile.test.package."*"]
+opt-level = 1
+
+[profile.release]
+# Release optimizations
+lto = "thin"
+codegen-units = 1
+strip = true

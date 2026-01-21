@@ -33,11 +33,30 @@ impl AppState {
     }
 
     /// Create AppState with a custom LiveKit service (for testing)
-    #[allow(dead_code)]
     pub fn with_livekit<L: LiveKitService + 'static>(config: Config, livekit: L) -> Self {
         Self {
             config: Arc::new(config),
             livekit: Arc::new(livekit),
+        }
+    }
+}
+
+/// Test configuration builder
+impl Config {
+    /// Create a test configuration with default values
+    ///
+    /// This is intended for testing purposes only.
+    pub fn for_tests() -> Self {
+        Self {
+            livekit_url: "http://localhost:7880".to_string(),
+            livekit_ws_url: "ws://localhost:7880".to_string(),
+            api_key: "test-api-key".to_string(),
+            api_secret: "test-api-secret".to_string(),
+            server_port: 8081,
+            server_host: "localhost".to_string(),
+            enable_https: false,
+            ssl_cert_file: "./certs/server.crt".to_string(),
+            ssl_key_file: "./certs/server.key".to_string(),
         }
     }
 }

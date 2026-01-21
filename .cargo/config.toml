@@ -1,0 +1,24 @@
+# Cargo build configuration for faster compilation
+
+[build]
+# Use all available CPU cores
+jobs = -1
+
+[target.x86_64-pc-windows-msvc]
+# Use faster linker on Windows (requires installing lld)
+# Uncomment if you have LLVM/lld installed:
+# linker = "lld-link"
+
+# Alternative: use rust-lld (bundled with rustup)
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+[registries.crates-io]
+protocol = "sparse"
+
+[net]
+# Parallel downloads
+git-fetch-with-cli = true
+
+[env]
+# Reduce compile times by limiting codegen units in dependencies
+# CARGO_PROFILE_DEV_CODEGEN_UNITS = "256"
