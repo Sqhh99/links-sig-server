@@ -29,6 +29,8 @@ pub struct Config {
     pub server_host: String,
     /// Enable HTTPS
     pub enable_https: bool,
+    /// Base URL for application share links
+    pub app_base_url: String,
     /// SSL certificate file path
     pub ssl_cert_file: String,
     /// SSL key file path
@@ -96,14 +98,17 @@ impl Config {
             enable_https: env::var("ENABLE_HTTPS")
                 .map(|v| v == "true")
                 .unwrap_or(false),
+            app_base_url: env::var("APP_BASE_URL")
+                .unwrap_or_else(|_| "http://localhost:3000".to_string()),
             ssl_cert_file: env::var("SSL_CERT_FILE")
                 .unwrap_or_else(|_| "./certs/server.crt".to_string()),
             ssl_key_file: env::var("SSL_KEY_FILE")
                 .unwrap_or_else(|_| "./certs/server.key".to_string()),
 
             // Database settings
-            database_url: env::var("DATABASE_URL")
-                .unwrap_or_else(|_| "postgres://links_sig:links_sig_password@localhost:5432/links_sig".to_string()),
+            database_url: env::var("DATABASE_URL").unwrap_or_else(|_| {
+                "postgres://links_sig:links_sig_password@localhost:5432/links_sig".to_string()
+            }),
 
             // JWT settings
             jwt_secret: env::var("JWT_SECRET")
@@ -157,9 +162,12 @@ impl Config {
             server_port: 8081,
             server_host: "localhost".to_string(),
             enable_https: false,
+            app_base_url: "http://localhost:3000".to_string(),
             ssl_cert_file: "./certs/server.crt".to_string(),
             ssl_key_file: "./certs/server.key".to_string(),
-            database_url: "postgres://links_sig_test:links_sig_test_password@localhost:5433/links_sig_test".to_string(),
+            database_url:
+                "postgres://links_sig_test:links_sig_test_password@localhost:5433/links_sig_test"
+                    .to_string(),
             jwt_secret: "test-jwt-secret-key".to_string(),
             jwt_expiration_secs: 604800,
             code_hmac_secret: "test-hmac-secret-key".to_string(),

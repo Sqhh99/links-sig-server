@@ -71,10 +71,7 @@ async fn main() {
     }
 
     // Initialize email sender
-    let email = Arc::new(
-        SmtpEmailSender::new(&config)
-            .expect("Failed to initialize email sender"),
-    );
+    let email = Arc::new(SmtpEmailSender::new(&config).expect("Failed to initialize email sender"));
 
     // Create application state
     let state = AppState::new(config.clone(), db, email);
@@ -109,6 +106,7 @@ fn log_startup_info(config: &Config) {
     info!("LiveKit WebSocket: {}", config.livekit_ws_url);
     info!("API Key: {}", config.api_key);
     info!("HTTPS enabled: {}", config.enable_https);
+    info!("App base URL: {}", config.app_base_url);
     info!("Database: {}", mask_connection_string(&config.database_url));
     info!("SMTP Host: {}", config.smtp_host);
 }

@@ -24,7 +24,7 @@ Content-Type: application/json
 Authorization: Bearer <token>
 ```
 
-> 注意：当前版本（本仓库代码）公开的 API 路由尚未强制校验用户 JWT。
+其中会议业务接口（`/api/meetings*`、`/api/me/meeting-records`）会强制校验用户 JWT。
 
 ---
 
@@ -122,6 +122,7 @@ HTTP 状态码：`4xx` 或 `5xx`
 |------|--------|------|
 | `SERVER_HOST` | `localhost` | 服务器主机 |
 | `SERVER_PORT` | `8081` | 服务器端口 |
+| `APP_BASE_URL` | `http://localhost:3000` | 会议分享链接前端地址 |
 | `ENABLE_HTTPS` | `false` | 是否启用 HTTPS |
 | `SSL_CERT_FILE` | `./certs/server.crt` | SSL 证书路径 |
 | `SSL_KEY_FILE` | `./certs/server.key` | SSL 密钥路径 |

@@ -8,9 +8,10 @@ use axum::{
 };
 
 use crate::handlers::{
-    handle_create_room, handle_delete_room, handle_end_room, handle_get_token,
-    handle_health, handle_kick_participant, handle_list_participants, handle_list_rooms,
-    handle_login, handle_register, handle_request_register_code,
+    handle_create_meeting, handle_create_room, handle_delete_room, handle_end_room,
+    handle_get_token, handle_health, handle_join_meeting, handle_kick_participant,
+    handle_list_my_meeting_records, handle_list_participants, handle_list_rooms, handle_login,
+    handle_register, handle_request_register_code,
 };
 use crate::state::AppState;
 
@@ -28,6 +29,9 @@ use crate::state::AppState;
 /// - POST /api/auth/register/request-code - Request verification code
 /// - POST /api/auth/register - Complete registration
 /// - POST /api/auth/login - Login
+/// - POST /api/meetings - Create meeting with meeting number
+/// - POST /api/meetings/{meeting_no}/join - Join meeting by meeting number
+/// - GET /api/me/meeting-records - List current user's records
 pub fn build_api_router() -> Router<AppState> {
     // LiveKit token route
     let token_routes = Router::new().route("/token", post(handle_get_token));
@@ -50,6 +54,14 @@ pub fn build_api_router() -> Router<AppState> {
         )
         .route("/{room_name}/end", post(handle_end_room));
 
+    // Business meeting routes
+    let meeting_routes = Router::new()
+        .route("/", post(handle_create_meeting))
+        .route("/{meeting_no}/join", post(handle_join_meeting));
+
+    // Current user routes
+    let me_routes = Router::new().route("/meeting-records", get(handle_list_my_meeting_records));
+
     // Health routes
     let health_routes = Router::new().route("/", get(handle_health));
 
@@ -58,5 +70,7 @@ pub fn build_api_router() -> Router<AppState> {
         .merge(token_routes)
         .nest("/auth", user_auth_routes)
         .nest("/rooms", room_routes)
+        .nest("/meetings", meeting_routes)
+        .nest("/me", me_routes)
         .nest("/health", health_routes)
 }

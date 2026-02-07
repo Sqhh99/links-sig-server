@@ -130,6 +130,51 @@ pub struct LoginResponse {
     pub token: String,
 }
 
+/// Response for creating a meeting
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateMeetingResponse {
+    pub meeting_no: String,
+    pub room_name: String,
+    pub share_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Response for joining a meeting
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinMeetingResponse {
+    pub meeting_no: String,
+    pub token: String,
+    pub url: String,
+    pub room_name: String,
+    pub is_host: bool,
+}
+
+/// Meeting record list item for current user
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingRecordItem {
+    pub meeting_no: String,
+    pub room_name: String,
+    pub meeting_status: String,
+    pub creator_user_id: Uuid,
+    pub first_joined_at: DateTime<Utc>,
+    pub last_joined_at: DateTime<Utc>,
+    pub join_count: i32,
+}
+
+/// Paginated response for current user's meeting records
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingRecordListResponse {
+    pub records: Vec<MeetingRecordItem>,
+    pub page: u32,
+    pub page_size: u32,
+}
+
 /// User profile response (for future use)
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

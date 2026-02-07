@@ -40,36 +40,52 @@ impl AuthService {
         // Check if user should be host
         let is_host = Self::determine_host_status(livekit, &req).await;
 
-        // Create video grant
-        let grant = VideoGrant {
-            room_join: Some(true),
-            room: Some(req.room_name.clone()),
-            can_publish: Some(true),
-            can_subscribe: Some(true),
-            ..Default::default()
-        };
-
-        // Create metadata
-        let metadata = format!(r#"{{"isHost":{}}}"#, is_host);
-
-        // Generate token
-        let token = AccessToken::new(&config.api_key, &config.api_secret)
-            .set_identity(&req.participant_name)
-            .set_metadata(&metadata)
-            .set_video_grant(grant)
-            .set_valid_for(24 * 60 * 60) // 24 hours
-            .to_jwt()
-            .map_err(|e| AppError::internal(format!("Failed to generate token: {}", e)))?;
+        let response = Self::generate_token_for_room(
+            config,
+            req.room_name.clone(),
+            req.participant_name.clone(),
+            is_host,
+        )?;
 
         info!(
             "Token generated for user '{}' in room '{}' (is_host: {})",
             req.participant_name, req.room_name, is_host
         );
 
+        Ok(response)
+    }
+
+    /// Generate a LiveKit token for a specific room and host status.
+    ///
+    /// This bypasses host auto-detection and is used by business-level meeting APIs.
+    pub fn generate_token_for_room(
+        config: &Config,
+        room_name: String,
+        participant_name: String,
+        is_host: bool,
+    ) -> Result<TokenResponse, AppError> {
+        let grant = VideoGrant {
+            room_join: Some(true),
+            room: Some(room_name.clone()),
+            can_publish: Some(true),
+            can_subscribe: Some(true),
+            ..Default::default()
+        };
+
+        let metadata = format!(r#"{{"isHost":{}}}"#, is_host);
+
+        let token = AccessToken::new(&config.api_key, &config.api_secret)
+            .set_identity(&participant_name)
+            .set_metadata(&metadata)
+            .set_video_grant(grant)
+            .set_valid_for(24 * 60 * 60)
+            .to_jwt()
+            .map_err(|e| AppError::internal(format!("Failed to generate token: {}", e)))?;
+
         Ok(TokenResponse {
             token,
             url: config.livekit_ws_url.clone(),
-            room_name: req.room_name,
+            room_name,
             is_host,
         })
     }

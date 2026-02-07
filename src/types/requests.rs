@@ -25,6 +25,32 @@ pub struct CreateRoomRequest {
     pub name: String,
 }
 
+/// Create meeting request
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateMeetingRequest {
+    #[serde(default)]
+    pub display_name: Option<String>,
+}
+
+/// Join meeting request
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinMeetingRequest {
+    #[serde(default)]
+    pub participant_name: String,
+}
+
+/// Query params for listing current user's meeting records
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingRecordsQuery {
+    #[serde(default)]
+    pub page: Option<u32>,
+    #[serde(default)]
+    pub page_size: Option<u32>,
+}
+
 // ============================================================================
 // Auth Requests
 // ============================================================================
@@ -55,4 +81,3 @@ pub struct LoginRequest {
     /// Password
     pub password: String,
 }
-
