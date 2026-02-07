@@ -28,6 +28,8 @@ curl -X POST http://localhost:8081/api/token \
 | `participantName` | string | 否 | `"user-{timestamp}"` | 参与者名称 |
 | `isHost` | boolean | 否 | `false` | 是否请求主持人权限 |
 
+> 字符串字段会先 `trim`；当字段缺失或为空字符串时，会使用默认值。
+
 ### 响应
 
 #### 成功 (200 OK)
@@ -41,11 +43,21 @@ curl -X POST http://localhost:8081/api/token \
 }
 ```
 
-#### 请求参数无效 (400 Bad Request)
+#### 请求参数无效（4xx Client Error）
 
 ```json
 {
   "error": "Failed to deserialize the JSON body into the target type"
+}
+```
+
+> 说明：具体状态码由 Axum 的 JSON 解析失败类型决定，常见为 `400` 或 `422`。
+
+#### 服务器错误 (500 Internal Server Error)
+
+```json
+{
+  "error": "Failed to generate token: ..."
 }
 ```
 
@@ -71,14 +83,14 @@ curl -X POST http://localhost:8081/api/token \
 | `canPublish` | `true` | 允许发布音视频 |
 | `canSubscribe` | `true` | 允许订阅其他参与者 |
 
-### 主持人额外权限
+### `isHost` 字段说明
 
-当 `isHost: true` 时，Token 还包含：
+`isHost` 是服务端返回给客户端的业务标记，当前判定逻辑为：
 
-| 权限 | 值 | 描述 |
-|------|-----|------|
-| `roomAdmin` | `true` | 房间管理权限 |
-| `roomRecord` | `true` | 录制权限 |
+1. 请求体中显式传入 `isHost: true`；或
+2. 请求房间当前无参与者（或房间尚不存在）时自动设为 `true`。
+
+该字段会被写入 token metadata（例如 `{"isHost":true}`），用于客户端业务判断。
 
 ---
 
@@ -114,6 +126,17 @@ curl -X POST http://localhost:8081/api/token \
 curl -X POST http://localhost:8081/api/token \
   -H "Content-Type: application/json" \
   -d '{}'
+```
+
+返回示例：
+
+```json
+{
+  "token": "eyJ...",
+  "url": "ws://localhost:7880",
+  "roomName": "default-room",
+  "isHost": true
+}
 ```
 
 ---

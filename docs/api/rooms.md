@@ -66,6 +66,8 @@ curl -X POST http://localhost:8081/api/rooms \
 |------|------|------|--------|------|
 | `name` | string | 否 | `"room-{timestamp}"` | 房间名称 |
 
+> 当 `name` 缺失或为空字符串时使用默认值；当前实现不会对 `name` 做 `trim`。
+
 ### 响应
 
 #### 成功 (201 Created)
@@ -79,11 +81,21 @@ curl -X POST http://localhost:8081/api/rooms \
 }
 ```
 
-#### 请求参数无效 (400 Bad Request)
+#### 请求参数无效（4xx Client Error）
 
 ```json
 {
   "error": "Failed to deserialize the JSON body into the target type"
+}
+```
+
+> 说明：具体状态码由 Axum 的 JSON 解析失败类型决定，常见为 `400` 或 `422`。
+
+#### 服务器错误 (500 Internal Server Error)
+
+```json
+{
+  "error": "Failed to create room: ..."
 }
 ```
 
@@ -126,7 +138,7 @@ curl -X DELETE http://localhost:8081/api/rooms/meeting-room-1
 
 ```json
 {
-  "error": "Room not found"
+  "error": "Failed to delete room: ..."
 }
 ```
 
@@ -154,17 +166,19 @@ curl -X POST http://localhost:8081/api/rooms/meeting-room-1/end
 
 ```json
 {
-  "message": "Meeting ended, 3 participants removed"
+  "message": "Meeting ended"
 }
 ```
 
-#### 服务器错误 (500 Internal Server Error)
+#### 可能错误
 
 ```json
 {
   "error": "Failed to end meeting"
 }
 ```
+
+> 说明：`/end` 会先尝试读取并移除所有参与者，再尝试删除房间。移除/删除阶段的部分错误会记录日志，但接口仍可能返回 `200`。
 
 ---
 
