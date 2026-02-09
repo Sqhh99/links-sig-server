@@ -8,7 +8,7 @@ use std::time::Duration;
 /// Create a connection pool to the test database
 pub async fn setup_test_db() -> PgPool {
     let database_url = std::env::var("TEST_DATABASE_URL").unwrap_or_else(|_| {
-        "postgres://links_sig_test:links_sig_test_password@localhost:5433/links_sig_test"
+        "postgres://links_sig_test:links_sig_test_password@127.0.0.1:5433/links_sig_test"
             .to_string()
     });
 
