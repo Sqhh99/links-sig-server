@@ -63,6 +63,25 @@ async fn insert_meeting(db: &sqlx::PgPool, meeting_no: &str, creator_user_id: Uu
     .unwrap();
 }
 
+async fn find_nonexistent_meeting_no(db: &sqlx::PgPool) -> String {
+    for _ in 0..64 {
+        let candidate = format!("{:09}", (Uuid::new_v4().as_u128() % 1_000_000_000) as u32);
+        let exists = sqlx::query_scalar::<_, i64>(
+            "SELECT 1 FROM meetings WHERE meeting_no = $1 LIMIT 1",
+        )
+        .bind(&candidate)
+        .fetch_optional(db)
+        .await
+        .unwrap();
+
+        if exists.is_none() {
+            return candidate;
+        }
+    }
+
+    panic!("Failed to find a non-existent meeting number for test");
+}
+
 fn build_user_token(user_id: Uuid, email: &str) -> String {
     let config = build_test_config();
     encode_user_token(user_id, email, &config.jwt_secret, 3600).unwrap()
@@ -406,11 +425,12 @@ async fn test_kick_participant_business_room_requires_host() {
     let host_user_id = create_test_user(&db, &host_email).await;
     let guest_user_id = create_test_user(&db, &guest_email).await;
     let guest_token = build_user_token(guest_user_id, &guest_email);
-
-    insert_meeting(&db, "345678901", host_user_id).await;
+    let meeting_no = find_nonexistent_meeting_no(&db).await;
+    let room_name = format!("m-{}", meeting_no);
+    insert_meeting(&db, &meeting_no, host_user_id).await;
 
     let fake_livekit = FakeLiveKitService::new().with_participant(
-        "m-345678901",
+        &room_name,
         LiveKitParticipant {
             sid: Some("PA_guest".to_string()),
             identity: guest_user_id.to_string(),
@@ -438,7 +458,7 @@ async fn test_kick_participant_business_room_requires_host() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/rooms/m-345678901/participants/{}", guest_user_id))
+                .uri(format!("/rooms/{}/participants/{}", room_name, guest_user_id))
                 .header(header::AUTHORIZATION, format!("Bearer {}", guest_token))
                 .body(Body::empty())
                 .unwrap(),
@@ -458,11 +478,12 @@ async fn test_kick_participant_business_room_host_allowed() {
     let host_user_id = create_test_user(&db, &host_email).await;
     let guest_user_id = create_test_user(&db, &guest_email).await;
     let host_token = build_user_token(host_user_id, &host_email);
-
-    insert_meeting(&db, "456789012", host_user_id).await;
+    let meeting_no = find_nonexistent_meeting_no(&db).await;
+    let room_name = format!("m-{}", meeting_no);
+    insert_meeting(&db, &meeting_no, host_user_id).await;
 
     let fake_livekit = FakeLiveKitService::new().with_participant(
-        "m-456789012",
+        &room_name,
         LiveKitParticipant {
             sid: Some("PA_guest2".to_string()),
             identity: guest_user_id.to_string(),
@@ -490,7 +511,7 @@ async fn test_kick_participant_business_room_host_allowed() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/rooms/m-456789012/participants/{}", guest_user_id))
+                .uri(format!("/rooms/{}/participants/{}", room_name, guest_user_id))
                 .header(header::AUTHORIZATION, format!("Bearer {}", host_token))
                 .body(Body::empty())
                 .unwrap(),
@@ -510,12 +531,13 @@ async fn test_end_business_room_requires_host() {
     let host_user_id = create_test_user(&db, &host_email).await;
     let guest_user_id = create_test_user(&db, &guest_email).await;
     let guest_token = build_user_token(guest_user_id, &guest_email);
-
-    insert_meeting(&db, "567890123", host_user_id).await;
+    let meeting_no = find_nonexistent_meeting_no(&db).await;
+    let room_name = format!("m-{}", meeting_no);
+    insert_meeting(&db, &meeting_no, host_user_id).await;
 
     let fake_livekit = FakeLiveKitService::new().with_room(LiveKitRoom {
         sid: Some("RM_business_end".to_string()),
-        name: "m-567890123".to_string(),
+        name: room_name.clone(),
         empty_timeout: Some(300),
         max_participants: Some(10),
         creation_time: Some(1234567890),
@@ -539,7 +561,7 @@ async fn test_end_business_room_requires_host() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/rooms/m-567890123/end")
+                .uri(format!("/rooms/{}/end", room_name))
                 .header(header::AUTHORIZATION, format!("Bearer {}", guest_token))
                 .body(Body::empty())
                 .unwrap(),
