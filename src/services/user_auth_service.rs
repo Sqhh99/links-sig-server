@@ -19,7 +19,7 @@ use crate::config::Config;
 use crate::integrations::email::{format_verification_email, EmailSender};
 use crate::types::{
     AppError, LoginRequest, LoginResponse, RegisterRequest, RegisterResponse,
-    RequestCodeResponse, RequestRegisterCodeRequest,
+    RefreshTokenResponse, RequestCodeResponse, RequestRegisterCodeRequest,
 };
 
 type HmacSha256 = Hmac<Sha256>;
@@ -270,6 +270,42 @@ impl UserAuthService {
             user_id: user.id,
             email: user.email,
             token,
+        })
+    }
+
+    /// Refresh user JWT using current authenticated user identity.
+    pub async fn refresh_token(
+        db: &PgPool,
+        config: &Config,
+        user_id_str: &str,
+    ) -> Result<RefreshTokenResponse, AppError> {
+        let user_id =
+            Uuid::parse_str(user_id_str).map_err(|_| AppError::unauthorized("Invalid user token"))?;
+
+        let email = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT email
+            FROM users
+            WHERE id = $1
+            "#,
+        )
+        .bind(user_id)
+        .fetch_optional(db)
+        .await?
+        .ok_or_else(|| AppError::unauthorized("User not found"))?;
+
+        let token = encode_user_token(
+            user_id,
+            &email,
+            &config.jwt_secret,
+            config.jwt_expiration_secs,
+        )?;
+
+        Ok(RefreshTokenResponse {
+            user_id,
+            email,
+            token,
+            expires_in_secs: config.jwt_expiration_secs,
         })
     }
 

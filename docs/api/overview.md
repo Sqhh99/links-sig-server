@@ -34,6 +34,7 @@ Authorization: Bearer <token>
 ### 1. 用户 JWT（账号体系）
 
 - 获取方式：`POST /api/auth/login` 或 `POST /api/auth/register`
+- 刷新方式：`POST /api/auth/refresh`（需携带当前用户 JWT）
 - 默认有效期：`604800` 秒（7 天，可通过 `JWT_EXPIRATION_SECS` 配置）
 - 用途：账号体系身份凭证（后续可用于受保护接口）
 

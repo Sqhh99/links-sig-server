@@ -76,6 +76,7 @@ curl -X POST http://localhost:8081/api/rooms/team-meeting/end
 | POST | `/api/auth/register/request-code` | 请求注册验证码 |
 | POST | `/api/auth/register` | 用户注册 |
 | POST | `/api/auth/login` | 用户登录 |
+| POST | `/api/auth/refresh` | 刷新用户 JWT |
 | POST | `/api/token` | 生成 LiveKit Token |
 | GET | `/api/rooms` | 获取房间列表 |
 | POST | `/api/rooms` | 创建房间 |

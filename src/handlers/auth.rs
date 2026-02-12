@@ -1,7 +1,12 @@
 //! Authentication handlers
 
 use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum_extra::{
+    headers::{authorization::Bearer, Authorization},
+    TypedHeader,
+};
 
+use crate::auth::decode_user_token;
 use crate::services::{AuthService, UserAuthService};
 use crate::state::AppState;
 use crate::types::{
@@ -140,5 +145,34 @@ pub async fn handle_login(
     Json(req): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let response = UserAuthService::login(&state.db, &state.config, req).await?;
+    Ok((StatusCode::OK, Json(response)))
+}
+
+/// Refresh user JWT token
+///
+/// POST /api/auth/refresh
+///
+/// Headers:
+/// Authorization: Bearer <user-jwt>
+///
+/// Response (200 OK):
+/// ```json
+/// {
+///   "userId": "550e8400-e29b-41d4-a716-446655440000",
+///   "email": "user@example.com",
+///   "token": "eyJ...",
+///   "expiresInSecs": 604800
+/// }
+/// ```
+pub async fn handle_refresh_token(
+    State(state): State<AppState>,
+    auth_header: Option<TypedHeader<Authorization<Bearer>>>,
+) -> Result<impl IntoResponse, AppError> {
+    let TypedHeader(auth) =
+        auth_header.ok_or_else(|| AppError::unauthorized("Authorization header required"))?;
+
+    let claims = decode_user_token(auth.token(), &state.config.jwt_secret)?;
+
+    let response = UserAuthService::refresh_token(&state.db, &state.config, &claims.sub).await?;
     Ok((StatusCode::OK, Json(response)))
 }

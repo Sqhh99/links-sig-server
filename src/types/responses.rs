@@ -130,6 +130,16 @@ pub struct LoginResponse {
     pub token: String,
 }
 
+/// Response for refreshing user token
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshTokenResponse {
+    pub user_id: Uuid,
+    pub email: String,
+    pub token: String,
+    pub expires_in_secs: u64,
+}
+
 /// Response for creating a meeting
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

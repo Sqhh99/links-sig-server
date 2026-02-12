@@ -130,6 +130,50 @@ curl -X POST http://localhost:8081/api/auth/login \
 
 ---
 
+## POST /api/auth/refresh
+
+使用当前用户 JWT 刷新并获取一个新的用户 JWT。
+
+### 请求
+
+```bash
+curl -X POST http://localhost:8081/api/auth/refresh \
+  -H "Authorization: Bearer <user-jwt>"
+```
+
+> 无需请求体。
+
+### 成功响应（200 OK）
+
+```json
+{
+  "userId": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "user@example.com",
+  "token": "eyJ...",
+  "expiresInSecs": 604800
+}
+```
+
+### 字段说明
+
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| `userId` | string | 用户 ID |
+| `email` | string | 用户邮箱 |
+| `token` | string | 新签发的 JWT |
+| `expiresInSecs` | number | 新 token 有效期（秒） |
+
+### 可能错误
+
+| 状态码 | 示例 |
+|--------|------|
+| 401 | `{"error":"Authorization header required"}` |
+| 401 | `{"error":"Token has expired"}` |
+| 401 | `{"error":"Invalid token format"}` |
+| 401 | `{"error":"User not found"}` |
+
+---
+
 ## JWT 说明
 
 用户 JWT（来自注册/登录）为 HS256 签名，Payload 主要字段：
