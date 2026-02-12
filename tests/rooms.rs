@@ -63,6 +63,14 @@ async fn insert_meeting(db: &sqlx::PgPool, meeting_no: &str, creator_user_id: Uu
     .unwrap();
 }
 
+async fn get_meeting_status(db: &sqlx::PgPool, meeting_no: &str) -> String {
+    sqlx::query_scalar::<_, String>("SELECT status FROM meetings WHERE meeting_no = $1")
+        .bind(meeting_no)
+        .fetch_one(db)
+        .await
+        .unwrap()
+}
+
 async fn find_nonexistent_meeting_no(db: &sqlx::PgPool) -> String {
     for _ in 0..64 {
         let candidate = format!("{:09}", (Uuid::new_v4().as_u128() % 1_000_000_000) as u32);
@@ -570,6 +578,55 @@ async fn test_end_business_room_requires_host() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_end_business_room_marks_meeting_ended() {
+    let db = setup().await;
+
+    let host_email = format!("host4+{}@example.com", Uuid::new_v4());
+    let host_user_id = create_test_user(&db, &host_email).await;
+    let host_token = build_user_token(host_user_id, &host_email);
+    let meeting_no = find_nonexistent_meeting_no(&db).await;
+    let room_name = format!("m-{}", meeting_no);
+    insert_meeting(&db, &meeting_no, host_user_id).await;
+
+    let fake_livekit = FakeLiveKitService::new().with_room(LiveKitRoom {
+        sid: Some("RM_business_end_host".to_string()),
+        name: room_name.clone(),
+        empty_timeout: Some(300),
+        max_participants: Some(10),
+        creation_time: Some(1234567890),
+        turn_password: None,
+        enabled_codecs: None,
+        metadata: Some(String::new()),
+        num_participants: Some(0),
+        num_publishers: Some(0),
+        active_recording: Some(false),
+    });
+
+    let state = AppState::with_livekit(
+        build_test_config(),
+        db.clone(),
+        fake_livekit,
+        std::sync::Arc::new(FakeEmailSender::new()),
+    );
+    let app = build_test_app_with_state(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/rooms/{}/end", room_name))
+                .header(header::AUTHORIZATION, format!("Bearer {}", host_token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(get_meeting_status(&db, &meeting_no).await, "ended");
 }
 
 #[tokio::test]

@@ -112,6 +112,8 @@ curl -X POST http://localhost:8081/api/meetings/123456789/join \
 
 按会议号离开会议（只允许当前登录用户离开自己会话，幂等）。
 
+当离会后该会议房间已无人时，服务端会把 `meetings.status` 从 `active` 更新为 `ended`（并写入 `ended_at`）。后续再调用 `/join` 会返回 `409`。
+
 ### 请求
 
 ```bash
@@ -212,3 +214,6 @@ curl -X GET "http://localhost:8081/api/me/meeting-records?page=1&pageSize=20" \
 - 同一用户重复加入同一会议，不会新增多条记录；
 - 会更新该条记录的 `lastJoinedAt`；
 - `joinCount` 自增。
+- `meetingStatus` 由服务端会议生命周期维护：
+  - 默认创建后为 `active`；
+  - 当会议房间无人（例如最后一人 `leave`）或主持人调用 `/rooms/{room_name}/end` 后会变为 `ended`。

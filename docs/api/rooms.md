@@ -151,6 +151,7 @@ curl -X DELETE http://localhost:8081/api/rooms/meeting-room-1
 > 权限说明：
 > - 业务会议房间（`m-#########` 且存在于 `meetings` 表）只允许主持人调用；
 > - 普通房间保持原有行为。
+> - 若命中业务会议房间，接口成功后会同步把 `meetings.status` 更新为 `ended`（仅 `active -> ended`）。
 
 ### 请求
 

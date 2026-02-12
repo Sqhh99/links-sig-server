@@ -102,6 +102,7 @@ pub async fn handle_end_room(
 ) -> Result<impl IntoResponse, AppError> {
     ensure_business_meeting_host(&state, &room_name, auth_header).await?;
     let response = MeetingService::end_meeting(&*state.livekit, &room_name).await?;
+    MeetingRegistryService::mark_meeting_ended_by_room_name(&state.db, &room_name).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 

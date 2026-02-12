@@ -76,6 +76,14 @@ async fn insert_meeting(db: &sqlx::PgPool, meeting_no: &str, creator_user_id: Uu
     .unwrap();
 }
 
+async fn get_meeting_status(db: &sqlx::PgPool, meeting_no: &str) -> String {
+    sqlx::query_scalar::<_, String>("SELECT status FROM meetings WHERE meeting_no = $1")
+        .bind(meeting_no)
+        .fetch_one(db)
+        .await
+        .unwrap()
+}
+
 async fn find_nonexistent_meeting_no(db: &sqlx::PgPool) -> String {
     for _ in 0..64 {
         let candidate = format!("{:09}", (Uuid::new_v4().as_u128() % 1_000_000_000) as u32);
@@ -379,4 +387,146 @@ async fn test_leave_meeting_is_idempotent() {
     assert_eq!(second_response.status(), StatusCode::OK);
     let second_json = body_to_json(second_response.into_body()).await;
     assert_eq!(second_json["left"], false);
+}
+
+#[tokio::test]
+async fn test_leave_meeting_marks_status_ended_when_room_becomes_empty() {
+    let temp_db = setup_test_db().await;
+    run_test_migrations(&temp_db).await;
+
+    let config = build_test_config();
+    let unique_email = format!("leave_ended+{}@example.com", Uuid::new_v4());
+    let user_id = create_test_user(&temp_db, &unique_email).await;
+    let meeting_no = find_nonexistent_meeting_no(&temp_db).await;
+    insert_meeting(&temp_db, &meeting_no, user_id).await;
+
+    let token = encode_user_token(user_id, &unique_email, &config.jwt_secret, 3600).unwrap();
+    let room_name = format!("m-{}", meeting_no);
+    let fake_livekit = FakeLiveKitService::new().with_participant(
+        &room_name,
+        links_sig_rust_server::types::LiveKitParticipant {
+            sid: Some("PA_leave_ended".to_string()),
+            identity: user_id.to_string(),
+            state: Some(1),
+            tracks: None,
+            metadata: Some(String::new()),
+            joined_at: Some(1234567890),
+            name: Some("Leave Ended".to_string()),
+            version: Some(1),
+            permission: None,
+            region: None,
+            is_publisher: Some(false),
+        },
+    );
+
+    let state = AppState::with_livekit(
+        config,
+        temp_db.clone(),
+        fake_livekit,
+        Arc::new(FakeEmailSender::new()),
+    );
+    let app = build_test_app_with_state(state);
+
+    let leave_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/meetings/{}/leave", meeting_no))
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(leave_response.status(), StatusCode::OK);
+    assert_eq!(get_meeting_status(&temp_db, &meeting_no).await, "ended");
+
+    let join_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/meetings/{}/join", meeting_no))
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(join_response.status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn test_leave_meeting_keeps_active_when_other_participants_remain() {
+    let temp_db = setup_test_db().await;
+    run_test_migrations(&temp_db).await;
+
+    let config = build_test_config();
+    let leaver_email = format!("leave_active+{}@example.com", Uuid::new_v4());
+    let leaver_user_id = create_test_user(&temp_db, &leaver_email).await;
+    let other_user_id = Uuid::new_v4();
+    let meeting_no = find_nonexistent_meeting_no(&temp_db).await;
+    insert_meeting(&temp_db, &meeting_no, leaver_user_id).await;
+
+    let token = encode_user_token(leaver_user_id, &leaver_email, &config.jwt_secret, 3600).unwrap();
+    let room_name = format!("m-{}", meeting_no);
+    let fake_livekit = FakeLiveKitService::new()
+        .with_participant(
+            &room_name,
+            links_sig_rust_server::types::LiveKitParticipant {
+                sid: Some("PA_leave_active_self".to_string()),
+                identity: leaver_user_id.to_string(),
+                state: Some(1),
+                tracks: None,
+                metadata: Some(String::new()),
+                joined_at: Some(1234567890),
+                name: Some("Leaver".to_string()),
+                version: Some(1),
+                permission: None,
+                region: None,
+                is_publisher: Some(false),
+            },
+        )
+        .with_participant(
+            &room_name,
+            links_sig_rust_server::types::LiveKitParticipant {
+                sid: Some("PA_leave_active_other".to_string()),
+                identity: other_user_id.to_string(),
+                state: Some(1),
+                tracks: None,
+                metadata: Some(String::new()),
+                joined_at: Some(1234567890),
+                name: Some("Other".to_string()),
+                version: Some(1),
+                permission: None,
+                region: None,
+                is_publisher: Some(false),
+            },
+        );
+
+    let state = AppState::with_livekit(
+        config,
+        temp_db.clone(),
+        fake_livekit,
+        Arc::new(FakeEmailSender::new()),
+    );
+    let app = build_test_app_with_state(state);
+
+    let leave_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/meetings/{}/leave", meeting_no))
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(leave_response.status(), StatusCode::OK);
+    assert_eq!(get_meeting_status(&temp_db, &meeting_no).await, "active");
 }

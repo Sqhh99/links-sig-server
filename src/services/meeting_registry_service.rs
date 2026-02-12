@@ -205,24 +205,48 @@ impl MeetingRegistryService {
 
         let identity = user_id.to_string();
 
-        let participants = match livekit.list_participants(&meeting.room_name).await {
-            Ok(resp) => resp.participants,
+        let participants_before = match livekit.list_participants(&meeting.room_name).await {
+            Ok(resp) => Some(resp.participants),
             Err(err) => {
                 // Room may already be gone. Keep leave idempotent.
                 warn!(
                     "Leave meeting list participants failed for room '{}': {}",
                     meeting.room_name, err
                 );
-                Vec::new()
+                if Self::is_room_unavailable_error(&err) {
+                    Self::mark_meeting_ended_by_id(db, meeting.id).await?;
+                }
+                None
             }
         };
 
-        let already_present = participants.iter().any(|p| p.identity == identity);
+        let already_present = participants_before
+            .as_ref()
+            .is_some_and(|participants| participants.iter().any(|p| p.identity == identity));
         if already_present {
             livekit
                 .remove_participant(&meeting.room_name, &identity)
                 .await
                 .map_err(AppError::internal)?;
+        }
+
+        let room_is_empty = if already_present {
+            match livekit.list_participants(&meeting.room_name).await {
+                Ok(resp) => Some(resp.participants.is_empty()),
+                Err(err) => {
+                    warn!(
+                        "Leave meeting post-remove list participants failed for room '{}': {}",
+                        meeting.room_name, err
+                    );
+                    Self::is_room_unavailable_error(&err).then_some(true)
+                }
+            }
+        } else {
+            participants_before.as_ref().map(Vec::is_empty)
+        };
+
+        if room_is_empty == Some(true) {
+            Self::mark_meeting_ended_by_id(db, meeting.id).await?;
         }
 
         Ok(LeaveMeetingResponse {
@@ -257,6 +281,53 @@ impl MeetingRegistryService {
         .map_err(|e| AppError::internal(format!("Failed to query meeting by room: {}", e)))?;
 
         Ok(creator_user_id)
+    }
+
+    /// Mark a meeting as ended by meeting id.
+    ///
+    /// This transition is one-way: only `active -> ended`.
+    pub async fn mark_meeting_ended_by_id(db: &PgPool, meeting_id: Uuid) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE meetings
+            SET
+                status = 'ended',
+                ended_at = COALESCE(ended_at, NOW())
+            WHERE id = $1
+              AND status = 'active'
+            "#,
+        )
+        .bind(meeting_id)
+        .execute(db)
+        .await
+        .map_err(|e| AppError::internal(format!("Failed to mark meeting ended: {}", e)))?;
+
+        Ok(())
+    }
+
+    /// Mark a meeting as ended by room name.
+    ///
+    /// No-op if room is not a business meeting room.
+    pub async fn mark_meeting_ended_by_room_name(
+        db: &PgPool,
+        room_name: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE meetings
+            SET
+                status = 'ended',
+                ended_at = COALESCE(ended_at, NOW())
+            WHERE room_name = $1
+              AND status = 'active'
+            "#,
+        )
+        .bind(room_name)
+        .execute(db)
+        .await
+        .map_err(|e| AppError::internal(format!("Failed to mark meeting ended: {}", e)))?;
+
+        Ok(())
     }
 
     /// List current user's meeting records.
@@ -321,5 +392,12 @@ impl MeetingRegistryService {
 
     fn is_valid_meeting_no(meeting_no: &str) -> bool {
         meeting_no.len() == 9 && meeting_no.chars().all(|c| c.is_ascii_digit())
+    }
+
+    fn is_room_unavailable_error(err: &str) -> bool {
+        let normalized = err.to_ascii_lowercase();
+        normalized.contains("not found")
+            || normalized.contains("does not exist")
+            || normalized.contains("no such room")
     }
 }

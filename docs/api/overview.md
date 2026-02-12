@@ -26,6 +26,7 @@ Authorization: Bearer <token>
 
 其中会议业务接口（`/api/meetings*`、`/api/me/meeting-records`）会强制校验用户 JWT。
 此外，`/api/rooms/{room_name}/participants/{identity}` 与 `/api/rooms/{room_name}/end` 在命中业务会议房间（`m-#########` 且存在于 `meetings`）时，也会强制校验主持人权限。
+业务会议状态由服务端维护：创建后为 `active`，当最后一名成员离会或主持人调用 `/api/rooms/{room_name}/end` 后会变为 `ended`。
 
 ---
 
