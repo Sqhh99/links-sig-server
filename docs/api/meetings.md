@@ -1,6 +1,6 @@
 # 会议号与会议记录 API
 
-业务会议接口：服务端自动生成 `9` 位数字会议号，支持分享链接加入，以及用户维度的会议记录查询。
+业务会议接口：服务端自动生成 `9` 位数字会议号，支持分享链接加入/离开，以及用户维度的会议记录查询。
 
 ---
 
@@ -80,9 +80,11 @@ curl -X POST http://localhost:8081/api/meetings/123456789/join \
 
 | 字段 | 类型 | 必填 | 默认值 | 描述 |
 |------|------|------|--------|------|
-| `participantName` | string | 否 | 用户邮箱 | 进入 LiveKit 房间时使用的身份名 |
+| `participantName` | string | 否 | 用户邮箱 | 进入会议时的显示名（不作为 identity） |
 
 > 可传 `{}`，服务端会回退为当前登录用户邮箱。
+>
+> 服务端会用当前用户 JWT 的 `user_id` 作为 LiveKit identity，客户端不能自定义 identity。
 
 ### 成功响应（200 OK）
 
@@ -103,6 +105,67 @@ curl -X POST http://localhost:8081/api/meetings/123456789/join \
 | 400 | `{"error":"meeting_no must be 9 digits"}` |
 | 404 | `{"error":"Meeting not found"}` |
 | 409 | `{"error":"Meeting has ended"}` |
+
+---
+
+## POST /api/meetings/{meeting_no}/leave
+
+按会议号离开会议（只允许当前登录用户离开自己会话，幂等）。
+
+### 请求
+
+```bash
+curl -X POST http://localhost:8081/api/meetings/123456789/leave \
+  -H "Authorization: Bearer <user-jwt>"
+```
+
+### 路径参数
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| `meeting_no` | string | 9 位数字会议号 |
+
+### 成功响应（200 OK）
+
+```json
+{
+  "message": "Left meeting",
+  "meetingNo": "123456789",
+  "roomName": "m-123456789",
+  "identity": "550e8400-e29b-41d4-a716-446655440000",
+  "left": true
+}
+```
+
+重复调用（用户已不在房间）：
+
+```json
+{
+  "message": "Already left meeting",
+  "meetingNo": "123456789",
+  "roomName": "m-123456789",
+  "identity": "550e8400-e29b-41d4-a716-446655440000",
+  "left": false
+}
+```
+
+### 字段说明
+
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| `message` | string | 离会结果描述 |
+| `meetingNo` | string | 9 位会议号 |
+| `roomName` | string | 对应房间名 |
+| `identity` | string | 当前用户 identity（固定为 JWT `user_id`） |
+| `left` | boolean | 本次调用是否实际执行了移除 |
+
+### 可能错误
+
+| 状态码 | 示例 |
+|--------|------|
+| 400 | `{"error":"meeting_no must be 9 digits"}` |
+| 401 | `{"error":"Authorization header required"}` |
+| 404 | `{"error":"Meeting not found"}` |
 
 ---
 

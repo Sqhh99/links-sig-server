@@ -5,13 +5,15 @@
 use chrono::{DateTime, Utc};
 use rand::Rng;
 use sqlx::PgPool;
+use tracing::warn;
 use uuid::Uuid;
 
 use crate::config::Config;
+use crate::integrations::LiveKitService;
 use crate::services::AuthService;
 use crate::types::{
-    AppError, CreateMeetingResponse, JoinMeetingRequest, JoinMeetingResponse, MeetingRecordItem,
-    MeetingRecordListResponse,
+    AppError, CreateMeetingResponse, JoinMeetingRequest, JoinMeetingResponse, LeaveMeetingResponse,
+    MeetingRecordItem, MeetingRecordListResponse,
 };
 
 const MEETING_NUMBER_MAX: u32 = 1_000_000_000;
@@ -136,11 +138,13 @@ impl MeetingRegistryService {
         }
 
         let is_host = meeting.creator_user_id == user_id;
+        let identity = user_id.to_string();
 
-        let token = AuthService::generate_token_for_room(
+        let token = AuthService::generate_token_for_room_with_identity(
             config,
             meeting.room_name.clone(),
-            participant_name,
+            identity,
+            Some(participant_name),
             is_host,
         )?;
 
@@ -169,6 +173,90 @@ impl MeetingRegistryService {
             room_name: token.room_name,
             is_host: token.is_host,
         })
+    }
+
+    /// Leave a meeting by removing current user's participant identity from LiveKit room.
+    ///
+    /// The operation is idempotent:
+    /// - If participant exists in room, it is removed and `left = true`
+    /// - If participant does not exist (or room is already gone), `left = false`
+    pub async fn leave_meeting<L: LiveKitService + ?Sized>(
+        db: &PgPool,
+        livekit: &L,
+        meeting_no: &str,
+        user_id: Uuid,
+    ) -> Result<LeaveMeetingResponse, AppError> {
+        if !Self::is_valid_meeting_no(meeting_no) {
+            return Err(AppError::bad_request("meeting_no must be 9 digits"));
+        }
+
+        let meeting = sqlx::query_as::<_, MeetingRow>(
+            r#"
+            SELECT id, meeting_no, room_name, creator_user_id, status, created_at
+            FROM meetings
+            WHERE meeting_no = $1
+            "#,
+        )
+        .bind(meeting_no)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| AppError::internal(format!("Failed to query meeting: {}", e)))?
+        .ok_or_else(|| AppError::not_found("Meeting not found"))?;
+
+        let identity = user_id.to_string();
+
+        let participants = match livekit.list_participants(&meeting.room_name).await {
+            Ok(resp) => resp.participants,
+            Err(err) => {
+                // Room may already be gone. Keep leave idempotent.
+                warn!(
+                    "Leave meeting list participants failed for room '{}': {}",
+                    meeting.room_name, err
+                );
+                Vec::new()
+            }
+        };
+
+        let already_present = participants.iter().any(|p| p.identity == identity);
+        if already_present {
+            livekit
+                .remove_participant(&meeting.room_name, &identity)
+                .await
+                .map_err(AppError::internal)?;
+        }
+
+        Ok(LeaveMeetingResponse {
+            message: if already_present {
+                "Left meeting".to_string()
+            } else {
+                "Already left meeting".to_string()
+            },
+            meeting_no: meeting.meeting_no,
+            room_name: meeting.room_name,
+            identity,
+            left: already_present,
+        })
+    }
+
+    /// Returns creator user id for a room if it is a business meeting room.
+    pub async fn get_meeting_creator_by_room_name(
+        db: &PgPool,
+        room_name: &str,
+    ) -> Result<Option<Uuid>, AppError> {
+        let creator_user_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT creator_user_id
+            FROM meetings
+            WHERE room_name = $1
+            LIMIT 1
+            "#,
+        )
+        .bind(room_name)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| AppError::internal(format!("Failed to query meeting by room: {}", e)))?;
+
+        Ok(creator_user_id)
     }
 
     /// List current user's meeting records.

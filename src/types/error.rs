@@ -22,6 +22,8 @@ pub enum AppError {
     NotFound(String),
     /// Unauthorized error (401)
     Unauthorized(String),
+    /// Forbidden error (403)
+    Forbidden(String),
     /// Conflict error (409) - e.g., email already registered
     Conflict(String),
     /// Too many requests (429) - rate limiting
@@ -50,6 +52,11 @@ impl AppError {
         Self::Unauthorized(msg.into())
     }
 
+    /// Create a forbidden error
+    pub fn forbidden(msg: impl Into<String>) -> Self {
+        Self::Forbidden(msg.into())
+    }
+
     /// Create a conflict error
     pub fn conflict(msg: impl Into<String>) -> Self {
         Self::Conflict(msg.into())
@@ -68,6 +75,7 @@ impl std::fmt::Display for AppError {
             AppError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
             AppError::NotFound(msg) => write!(f, "Not found: {}", msg),
             AppError::Unauthorized(msg) => write!(f, "Unauthorized: {}", msg),
+            AppError::Forbidden(msg) => write!(f, "Forbidden: {}", msg),
             AppError::Conflict(msg) => write!(f, "Conflict: {}", msg),
             AppError::TooManyRequests(msg) => write!(f, "Too many requests: {}", msg),
         }
@@ -83,6 +91,7 @@ impl IntoResponse for AppError {
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
+            AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg),
             AppError::TooManyRequests(msg) => (StatusCode::TOO_MANY_REQUESTS, msg),
         };

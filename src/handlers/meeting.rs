@@ -82,8 +82,10 @@ pub async fn handle_list_participants(
 /// Response: MessageResponse
 pub async fn handle_kick_participant(
     State(state): State<AppState>,
+    auth_header: Option<TypedHeader<Authorization<Bearer>>>,
     Path((room_name, identity)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, AppError> {
+    ensure_business_meeting_host(&state, &room_name, auth_header).await?;
     let response = MeetingService::kick_participant(&*state.livekit, &room_name, &identity).await?;
     Ok((StatusCode::OK, Json(response)))
 }
@@ -95,8 +97,10 @@ pub async fn handle_kick_participant(
 /// Response: MessageResponse
 pub async fn handle_end_room(
     State(state): State<AppState>,
+    auth_header: Option<TypedHeader<Authorization<Bearer>>>,
     Path(room_name): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
+    ensure_business_meeting_host(&state, &room_name, auth_header).await?;
     let response = MeetingService::end_meeting(&*state.livekit, &room_name).await?;
     Ok((StatusCode::OK, Json(response)))
 }
@@ -136,6 +140,21 @@ pub async fn handle_join_meeting(
     Ok((StatusCode::OK, Json(response)))
 }
 
+/// Leave a meeting by meeting number
+///
+/// POST /api/meetings/{meeting_no}/leave
+pub async fn handle_leave_meeting(
+    State(state): State<AppState>,
+    auth_header: Option<TypedHeader<Authorization<Bearer>>>,
+    Path(meeting_no): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let (user_id, _user_email) = parse_user_from_auth_header(auth_header, &state)?;
+    let response =
+        MeetingRegistryService::leave_meeting(&state.db, &*state.livekit, &meeting_no, user_id)
+            .await?;
+    Ok((StatusCode::OK, Json(response)))
+}
+
 /// List current user's meeting records
 ///
 /// GET /api/me/meeting-records
@@ -165,4 +184,25 @@ fn parse_user_from_auth_header(
         Uuid::parse_str(&claims.sub).map_err(|_| AppError::unauthorized("Invalid user token"))?;
 
     Ok((user_id, claims.email))
+}
+
+async fn ensure_business_meeting_host(
+    state: &AppState,
+    room_name: &str,
+    auth_header: Option<TypedHeader<Authorization<Bearer>>>,
+) -> Result<(), AppError> {
+    let Some(creator_user_id) =
+        MeetingRegistryService::get_meeting_creator_by_room_name(&state.db, room_name).await?
+    else {
+        return Ok(());
+    };
+
+    let (user_id, _email) = parse_user_from_auth_header(auth_header, state)?;
+    if user_id != creator_user_id {
+        return Err(AppError::forbidden(
+            "Only meeting host can perform this action",
+        ));
+    }
+
+    Ok(())
 }

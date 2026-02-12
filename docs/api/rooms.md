@@ -148,10 +148,15 @@ curl -X DELETE http://localhost:8081/api/rooms/meeting-room-1
 
 结束会议：移除所有参与者并删除房间。
 
+> 权限说明：
+> - 业务会议房间（`m-#########` 且存在于 `meetings` 表）只允许主持人调用；
+> - 普通房间保持原有行为。
+
 ### 请求
 
 ```bash
-curl -X POST http://localhost:8081/api/rooms/meeting-room-1/end
+curl -X POST http://localhost:8081/api/rooms/meeting-room-1/end \
+  -H "Authorization: Bearer <host-user-jwt>"
 ```
 
 ### 路径参数
@@ -178,6 +183,18 @@ curl -X POST http://localhost:8081/api/rooms/meeting-room-1/end
 }
 ```
 
+```json
+{
+  "error": "Authorization header required"
+}
+```
+
+```json
+{
+  "error": "Only meeting host can perform this action"
+}
+```
+
 > 说明：`/end` 会先尝试读取并移除所有参与者，再尝试删除房间。移除/删除阶段的部分错误会记录日志，但接口仍可能返回 `200`。
 
 ---
@@ -196,7 +213,8 @@ curl -X POST http://localhost:8081/api/rooms \
 curl -X GET http://localhost:8081/api/rooms
 
 # 3. 结束会议（踢出所有人并删除房间）
-curl -X POST http://localhost:8081/api/rooms/team-standup/end
+curl -X POST http://localhost:8081/api/rooms/team-standup/end \
+  -H "Authorization: Bearer <host-user-jwt>"
 
 # 或者直接删除房间
 curl -X DELETE http://localhost:8081/api/rooms/team-standup

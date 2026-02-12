@@ -64,6 +64,23 @@ impl AuthService {
         participant_name: String,
         is_host: bool,
     ) -> Result<TokenResponse, AppError> {
+        Self::generate_token_for_room_with_identity(
+            config,
+            room_name,
+            participant_name.clone(),
+            Some(participant_name),
+            is_host,
+        )
+    }
+
+    /// Generate a LiveKit token with explicit identity and optional display name.
+    pub fn generate_token_for_room_with_identity(
+        config: &Config,
+        room_name: String,
+        identity: String,
+        display_name: Option<String>,
+        is_host: bool,
+    ) -> Result<TokenResponse, AppError> {
         let grant = VideoGrant {
             room_join: Some(true),
             room: Some(room_name.clone()),
@@ -74,11 +91,20 @@ impl AuthService {
 
         let metadata = format!(r#"{{"isHost":{}}}"#, is_host);
 
-        let token = AccessToken::new(&config.api_key, &config.api_secret)
-            .set_identity(&participant_name)
+        let mut token_builder = AccessToken::new(&config.api_key, &config.api_secret)
+            .set_identity(&identity)
             .set_metadata(&metadata)
             .set_video_grant(grant)
-            .set_valid_for(24 * 60 * 60)
+            .set_valid_for(24 * 60 * 60);
+
+        if let Some(name) = display_name {
+            let name = name.trim();
+            if !name.is_empty() {
+                token_builder = token_builder.set_name(name);
+            }
+        }
+
+        let token = token_builder
             .to_jwt()
             .map_err(|e| AppError::internal(format!("Failed to generate token: {}", e)))?;
 

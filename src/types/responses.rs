@@ -153,6 +153,17 @@ pub struct JoinMeetingResponse {
     pub is_host: bool,
 }
 
+/// Response for leaving a meeting
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeaveMeetingResponse {
+    pub message: String,
+    pub meeting_no: String,
+    pub room_name: String,
+    pub identity: String,
+    pub left: bool,
+}
+
 /// Meeting record list item for current user
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

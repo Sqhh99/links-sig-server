@@ -81,10 +81,15 @@ curl -X GET http://localhost:8081/api/rooms/meeting-room-1/participants
 
 将指定参与者移出房间（踢人）。
 
+> 权限说明：
+> - 业务会议房间（`m-#########` 且存在于 `meetings` 表）只允许主持人调用；
+> - 普通房间保持原有行为。
+
 ### 请求
 
 ```bash
-curl -X DELETE http://localhost:8081/api/rooms/meeting-room-1/participants/user-002
+curl -X DELETE http://localhost:8081/api/rooms/meeting-room-1/participants/user-002 \
+  -H "Authorization: Bearer <user-jwt>"
 ```
 
 ### 路径参数
@@ -110,6 +115,20 @@ curl -X DELETE http://localhost:8081/api/rooms/meeting-room-1/participants/user-
 ```json
 {
   "error": "Failed to remove participant: ..."
+}
+```
+
+#### 未认证或无权限（业务会议房间）
+
+```json
+{
+  "error": "Authorization header required"
+}
+```
+
+```json
+{
+  "error": "Only meeting host can perform this action"
 }
 ```
 
@@ -139,7 +158,8 @@ curl -s http://localhost:8081/api/rooms/team-meeting/participants | \
 
 ```bash
 # 移除 identity 为 "user-002" 的参与者
-curl -X DELETE http://localhost:8081/api/rooms/team-meeting/participants/user-002
+curl -X DELETE http://localhost:8081/api/rooms/team-meeting/participants/user-002 \
+  -H "Authorization: Bearer <host-user-jwt>"
 ```
 
 ### 踢出所有非主持人
@@ -149,7 +169,8 @@ curl -X DELETE http://localhost:8081/api/rooms/team-meeting/participants/user-00
 curl -s http://localhost:8081/api/rooms/team-meeting/participants | \
   jq -r '.participants[] | select(.metadata | fromjson | .isHost != true) | .identity' | \
   while read identity; do
-    curl -X DELETE "http://localhost:8081/api/rooms/team-meeting/participants/$identity"
+    curl -X DELETE "http://localhost:8081/api/rooms/team-meeting/participants/$identity" \
+      -H "Authorization: Bearer <host-user-jwt>"
   done
 ```
 
