@@ -31,12 +31,22 @@ pub struct CreateRoomRequest {
 pub struct CreateMeetingRequest {
     #[serde(default)]
     pub display_name: Option<String>,
+    #[serde(default)]
+    pub allow_guest_join: Option<bool>,
 }
 
 /// Join meeting request
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct JoinMeetingRequest {
+    #[serde(default)]
+    pub participant_name: String,
+}
+
+/// Guest join meeting request
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GuestJoinMeetingRequest {
     #[serde(default)]
     pub participant_name: String,
 }

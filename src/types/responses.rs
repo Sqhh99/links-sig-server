@@ -153,6 +153,7 @@ pub struct CreateMeetingResponse {
     pub meeting_no: String,
     pub room_name: String,
     pub share_url: String,
+    pub allow_guest_join: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
     pub created_at: DateTime<Utc>,

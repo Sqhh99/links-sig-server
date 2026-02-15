@@ -86,5 +86,6 @@ curl -X POST http://localhost:8081/api/rooms/team-meeting/end
 | DELETE | `/api/rooms/{room_name}/participants/{identity}` | 移除参与者 |
 | POST | `/api/meetings` | 创建业务会议（返回 9 位会议号） |
 | POST | `/api/meetings/{meeting_no}/join` | 通过会议号加入会议 |
+| POST | `/api/meetings/{meeting_no}/guest-join` | 游客通过会议号加入会议 |
 | POST | `/api/meetings/{meeting_no}/leave` | 通过会议号离开会议（仅自己） |
 | GET | `/api/me/meeting-records` | 查询当前用户会议记录 |

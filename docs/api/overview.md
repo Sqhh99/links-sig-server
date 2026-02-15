@@ -44,7 +44,10 @@ Authorization: Bearer <token>
 - 获取方式：`POST /api/token`
 - 默认有效期：24 小时（服务端固定）
 - 用途：游客加入已存在普通房间
-- 限制：不允许通过 `/api/token` 进入业务会议房间（`m-#########`），业务会议必须走 `/api/meetings/{meeting_no}/join`
+- 限制：不允许通过 `/api/token` 进入业务会议房间（`m-#########`）
+- 业务会议入会：
+  - 登录用户：`POST /api/meetings/{meeting_no}/join`
+  - 游客：`POST /api/meetings/{meeting_no}/guest-join`（仅当会议创建时 `allowGuestJoin=true`）
 
 ---
 

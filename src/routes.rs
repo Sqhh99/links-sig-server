@@ -9,10 +9,10 @@ use axum::{
 
 use crate::handlers::{
     handle_create_meeting, handle_create_room, handle_delete_room, handle_end_room,
-    handle_get_token, handle_health, handle_join_meeting, handle_kick_participant,
-    handle_leave_meeting, handle_list_my_meeting_records, handle_list_participants,
-    handle_list_rooms, handle_login, handle_refresh_token, handle_register,
-    handle_request_register_code,
+    handle_get_token, handle_guest_join_meeting, handle_health, handle_join_meeting,
+    handle_kick_participant, handle_leave_meeting, handle_list_my_meeting_records,
+    handle_list_participants, handle_list_rooms, handle_login, handle_refresh_token,
+    handle_register, handle_request_register_code,
 };
 use crate::state::AppState;
 
@@ -33,6 +33,7 @@ use crate::state::AppState;
 /// - POST /api/auth/refresh - Refresh user token
 /// - POST /api/meetings - Create meeting with meeting number
 /// - POST /api/meetings/{meeting_no}/join - Join meeting by meeting number
+/// - POST /api/meetings/{meeting_no}/guest-join - Guest join by meeting number
 /// - POST /api/meetings/{meeting_no}/leave - Leave meeting by meeting number
 /// - GET /api/me/meeting-records - List current user's records
 pub fn build_api_router() -> Router<AppState> {
@@ -62,6 +63,7 @@ pub fn build_api_router() -> Router<AppState> {
     let meeting_routes = Router::new()
         .route("/", post(handle_create_meeting))
         .route("/{meeting_no}/join", post(handle_join_meeting))
+        .route("/{meeting_no}/guest-join", post(handle_guest_join_meeting))
         .route("/{meeting_no}/leave", post(handle_leave_meeting));
 
     // Current user routes

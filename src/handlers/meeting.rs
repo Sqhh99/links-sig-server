@@ -15,7 +15,10 @@ use uuid::Uuid;
 use crate::auth::decode_user_token;
 use crate::services::{MeetingRegistryService, MeetingService};
 use crate::state::AppState;
-use crate::types::{AppError, CreateRoomRequest, JoinMeetingRequest, MeetingRecordsQuery};
+use crate::types::{
+    AppError, CreateMeetingRequest, CreateRoomRequest, GuestJoinMeetingRequest, JoinMeetingRequest,
+    MeetingRecordsQuery,
+};
 
 /// List all active rooms
 ///
@@ -112,10 +115,21 @@ pub async fn handle_end_room(
 pub async fn handle_create_meeting(
     State(state): State<AppState>,
     auth_header: Option<TypedHeader<Authorization<Bearer>>>,
+    req: Option<Json<CreateMeetingRequest>>,
 ) -> Result<impl IntoResponse, AppError> {
     let (user_id, _email) = parse_user_from_auth_header(auth_header, &state)?;
-    let response =
-        MeetingRegistryService::create_meeting(&state.db, &state.config, user_id, None).await?;
+    let payload = req
+        .map(|Json(inner)| inner)
+        .unwrap_or_else(CreateMeetingRequest::default);
+
+    let response = MeetingRegistryService::create_meeting(
+        &state.db,
+        &state.config,
+        user_id,
+        payload.display_name,
+        payload.allow_guest_join.unwrap_or(false),
+    )
+    .await?;
     Ok((StatusCode::CREATED, Json(response)))
 }
 
@@ -138,6 +152,20 @@ pub async fn handle_join_meeting(
         req,
     )
     .await?;
+    Ok((StatusCode::OK, Json(response)))
+}
+
+/// Guest joins a meeting by 9-digit meeting number
+///
+/// POST /api/meetings/{meeting_no}/guest-join
+pub async fn handle_guest_join_meeting(
+    State(state): State<AppState>,
+    Path(meeting_no): Path<String>,
+    Json(req): Json<GuestJoinMeetingRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let response =
+        MeetingRegistryService::guest_join_meeting(&state.db, &state.config, &meeting_no, req)
+            .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 

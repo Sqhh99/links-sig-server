@@ -134,6 +134,51 @@ impl AuthService {
         })
     }
 
+    /// Generate a guest token that can only subscribe in a room.
+    ///
+    /// Guest token is always non-host and carries `isGuest=true` metadata.
+    pub fn generate_guest_token_for_room_with_identity(
+        config: &Config,
+        room_name: String,
+        identity: String,
+        display_name: Option<String>,
+    ) -> Result<TokenResponse, AppError> {
+        let grant = VideoGrant {
+            room_join: Some(true),
+            room: Some(room_name.clone()),
+            can_publish: Some(false),
+            can_subscribe: Some(true),
+            can_publish_data: Some(false),
+            ..Default::default()
+        };
+
+        let metadata = r#"{"isHost":false,"isGuest":true}"#;
+
+        let mut token_builder = AccessToken::new(&config.api_key, &config.api_secret)
+            .set_identity(&identity)
+            .set_metadata(metadata)
+            .set_video_grant(grant)
+            .set_valid_for(24 * 60 * 60);
+
+        if let Some(name) = display_name {
+            let name = name.trim();
+            if !name.is_empty() {
+                token_builder = token_builder.set_name(name);
+            }
+        }
+
+        let token = token_builder
+            .to_jwt()
+            .map_err(|e| AppError::internal(format!("Failed to generate token: {}", e)))?;
+
+        Ok(TokenResponse {
+            token,
+            url: config.livekit_ws_url.clone(),
+            room_name,
+            is_host: false,
+        })
+    }
+
     async fn room_exists<L: LiveKitService + ?Sized>(
         livekit: &L,
         room_name: &str,

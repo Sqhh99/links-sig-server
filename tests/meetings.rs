@@ -103,6 +103,14 @@ async fn get_meeting_status(db: &sqlx::PgPool, meeting_no: &str) -> String {
         .unwrap()
 }
 
+async fn get_meeting_allow_guest_join(db: &sqlx::PgPool, meeting_no: &str) -> bool {
+    sqlx::query_scalar::<_, bool>("SELECT allow_guest_join FROM meetings WHERE meeting_no = $1")
+        .bind(meeting_no)
+        .fetch_one(db)
+        .await
+        .unwrap()
+}
+
 async fn find_nonexistent_meeting_no(db: &sqlx::PgPool) -> String {
     for _ in 0..64 {
         let candidate = format!("{:09}", (Uuid::new_v4().as_u128() % 1_000_000_000) as u32);
@@ -150,7 +158,7 @@ async fn test_create_meeting_requires_auth() {
 
 #[tokio::test]
 async fn test_create_meeting_returns_meeting_number_and_share_url() {
-    let (app, _db, token, _user_id, _config) =
+    let (app, db, token, _user_id, _config) =
         build_authed_app("meeting_creator@example.com").await;
 
     let response = app
@@ -177,6 +185,33 @@ async fn test_create_meeting_returns_meeting_number_and_share_url() {
         .as_str()
         .unwrap()
         .contains(&format!("meetingNo={}", meeting_no)));
+    assert_eq!(json["allowGuestJoin"], false);
+    assert!(!get_meeting_allow_guest_join(&db, meeting_no).await);
+}
+
+#[tokio::test]
+async fn test_create_meeting_allow_guest_join_true_persisted() {
+    let (app, db, token, _user_id, _config) = build_authed_app("allow_guest_true@example.com").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/meetings")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"allowGuestJoin":true}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let json = body_to_json(response.into_body()).await;
+    let meeting_no = json["meetingNo"].as_str().unwrap();
+
+    assert_eq!(json["allowGuestJoin"], true);
+    assert!(get_meeting_allow_guest_join(&db, meeting_no).await);
 }
 
 #[tokio::test]
@@ -361,6 +396,164 @@ async fn test_join_uses_user_display_name_when_participant_name_is_empty() {
     let claims = decode_token(lk_token, &config.api_secret).unwrap();
 
     assert_eq!(claims.name, Some(display_name.to_string()));
+}
+
+#[tokio::test]
+async fn test_guest_join_denied_when_allow_guest_join_false() {
+    let db = setup_test_db().await;
+    run_test_migrations(&db).await;
+
+    let creator_email = format!("guest_denied_creator+{}@example.com", Uuid::new_v4());
+    let creator_user_id = create_test_user(&db, &creator_email).await;
+    let meeting_no = find_nonexistent_meeting_no(&db).await;
+    insert_meeting(&db, &meeting_no, creator_user_id).await;
+
+    let state = AppState::with_livekit(
+        build_test_config(),
+        db,
+        FakeLiveKitService::new(),
+        Arc::new(FakeEmailSender::new()),
+    );
+    let app = build_test_app_with_state(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/meetings/{}/guest-join", meeting_no))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"participantName":"Guest"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let json = body_to_json(response.into_body()).await;
+    assert_eq!(json["error"], "Guest join is not allowed for this meeting");
+}
+
+#[tokio::test]
+async fn test_guest_join_allowed_when_flag_true_and_guest_permissions_are_limited() {
+    let (app, db, token, _user_id, config) = build_authed_app("guest_allowed@example.com").await;
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/meetings")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"allowGuestJoin":true}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::CREATED);
+    let create_json = body_to_json(create_response.into_body()).await;
+    let meeting_no = create_json["meetingNo"].as_str().unwrap().to_string();
+
+    assert!(get_meeting_allow_guest_join(&db, &meeting_no).await);
+
+    let guest_join_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/meetings/{}/guest-join", meeting_no))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"participantName":"Guest Viewer"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(guest_join_response.status(), StatusCode::OK);
+
+    let guest_join_json = body_to_json(guest_join_response.into_body()).await;
+    assert_eq!(guest_join_json["isHost"], false);
+
+    let lk_token = guest_join_json["token"].as_str().unwrap();
+    let claims = decode_token(lk_token, &config.api_secret).unwrap();
+
+    assert!(claims.sub.starts_with("GUEST-"));
+    assert_eq!(claims.name, Some("Guest Viewer".to_string()));
+    assert_eq!(claims.video.can_publish, Some(false));
+    assert_eq!(claims.video.can_subscribe, Some(true));
+    assert_eq!(claims.video.can_publish_data, Some(false));
+
+    let metadata: serde_json::Value =
+        serde_json::from_str(claims.metadata.as_deref().unwrap_or("{}")).unwrap();
+    assert_eq!(metadata["isGuest"], true);
+    assert_eq!(metadata["isHost"], false);
+}
+
+#[tokio::test]
+async fn test_guest_join_nonexistent_meeting_returns_404() {
+    let db = setup_test_db().await;
+    run_test_migrations(&db).await;
+    let meeting_no = find_nonexistent_meeting_no(&db).await;
+
+    let state = AppState::with_livekit(
+        build_test_config(),
+        db,
+        FakeLiveKitService::new(),
+        Arc::new(FakeEmailSender::new()),
+    );
+    let app = build_test_app_with_state(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/meetings/{}/guest-join", meeting_no))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_guest_join_ended_meeting_returns_409() {
+    let db = setup_test_db().await;
+    run_test_migrations(&db).await;
+
+    let creator_email = format!("guest_ended_creator+{}@example.com", Uuid::new_v4());
+    let creator_user_id = create_test_user(&db, &creator_email).await;
+    let meeting_no = find_nonexistent_meeting_no(&db).await;
+    insert_meeting(&db, &meeting_no, creator_user_id).await;
+    sqlx::query("UPDATE meetings SET status = 'ended', ended_at = NOW() WHERE meeting_no = $1")
+        .bind(&meeting_no)
+        .execute(&db)
+        .await
+        .unwrap();
+
+    let state = AppState::with_livekit(
+        build_test_config(),
+        db,
+        FakeLiveKitService::new(),
+        Arc::new(FakeEmailSender::new()),
+    );
+    let app = build_test_app_with_state(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/meetings/{}/guest-join", meeting_no))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let json = body_to_json(response.into_body()).await;
+    assert_eq!(json["error"], "Meeting has ended");
 }
 
 #[tokio::test]

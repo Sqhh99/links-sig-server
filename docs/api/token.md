@@ -33,7 +33,7 @@ curl -X POST http://localhost:8081/api/token \
 > 限制：
 > - `roomName` 不能为空，否则返回 `400`；
 > - 只允许加入已存在房间，不会隐式创建房间；不存在返回 `404`；
-> - `roomName` 若命中业务会议命名（`m-#########`）会返回 `403`，需改用 `/api/meetings/{meeting_no}/join`。
+> - `roomName` 若命中业务会议命名（`m-#########`）会返回 `403`，需改用会议体系接口（登录用户用 `/api/meetings/{meeting_no}/join`，游客用 `/api/meetings/{meeting_no}/guest-join`）。
 
 ### 响应
 

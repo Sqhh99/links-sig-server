@@ -6,11 +6,18 @@
 
 ## 认证要求
 
-以下接口都需要用户 JWT（登录或注册返回的 token）：
+以下接口需要用户 JWT（登录或注册返回的 token）：
 
 ```http
 Authorization: Bearer <user-jwt>
 ```
+
+- `POST /api/meetings`
+- `POST /api/meetings/{meeting_no}/join`
+- `POST /api/meetings/{meeting_no}/leave`
+- `GET /api/me/meeting-records`
+
+`POST /api/meetings/{meeting_no}/guest-join` 为游客入口，不需要用户 JWT。
 
 未携带或无效时返回：
 
@@ -30,7 +37,11 @@ Authorization: Bearer <user-jwt>
 
 ```bash
 curl -X POST http://localhost:8081/api/meetings \
-  -H "Authorization: Bearer <user-jwt>"
+  -H "Authorization: Bearer <user-jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "allowGuestJoin": false
+  }'
 ```
 
 ### 成功响应（201 Created）
@@ -40,9 +51,12 @@ curl -X POST http://localhost:8081/api/meetings \
   "meetingNo": "123456789",
   "roomName": "m-123456789",
   "shareUrl": "http://localhost:3000/join?meetingNo=123456789",
+  "allowGuestJoin": false,
   "createdAt": "2026-02-07T12:34:56Z"
 }
 ```
+
+> 说明：请求体可省略，默认 `allowGuestJoin = false`。
 
 ### 字段说明
 
@@ -51,6 +65,7 @@ curl -X POST http://localhost:8081/api/meetings \
 | `meetingNo` | string | 9 位数字会议号 |
 | `roomName` | string | 对应 LiveKit 房间名（格式：`m-{meetingNo}`） |
 | `shareUrl` | string | 客户端可直接分享的入会链接 |
+| `allowGuestJoin` | boolean | 是否允许游客加入（默认 `false`） |
 | `createdAt` | string | 创建时间（ISO 8601） |
 
 ---
@@ -105,6 +120,64 @@ curl -X POST http://localhost:8081/api/meetings/123456789/join \
 | 状态码 | 示例 |
 |--------|------|
 | 400 | `{"error":"meeting_no must be 9 digits"}` |
+| 404 | `{"error":"Meeting not found"}` |
+| 409 | `{"error":"Meeting has ended"}` |
+
+---
+
+## POST /api/meetings/{meeting_no}/guest-join
+
+游客通过会议号加入会议（无需用户 JWT）。
+
+只有当会议创建时 `allowGuestJoin = true` 才允许加入。
+
+### 请求
+
+```bash
+curl -X POST http://localhost:8081/api/meetings/123456789/guest-join \
+  -H "Content-Type: application/json" \
+  -d '{
+    "participantName": "访客A"
+  }'
+```
+
+### 路径参数
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| `meeting_no` | string | 9 位数字会议号 |
+
+### 请求体
+
+| 字段 | 类型 | 必填 | 默认值 | 描述 |
+|------|------|------|--------|------|
+| `participantName` | string | 否 | `GUEST-xxxx` | 游客显示名（不作为 identity） |
+
+### 成功响应（200 OK）
+
+```json
+{
+  "meetingNo": "123456789",
+  "token": "eyJ...",
+  "url": "ws://localhost:7880",
+  "roomName": "m-123456789",
+  "isHost": false
+}
+```
+
+### 游客权限边界
+
+- `isHost` 固定为 `false`；
+- token 仅允许订阅（`canSubscribe=true`）；
+- 禁止发布音视频与数据（`canPublish=false`，`canPublishData=false`）；
+- 不能踢人、不能结束会议。
+
+### 可能错误
+
+| 状态码 | 示例 |
+|--------|------|
+| 400 | `{"error":"meeting_no must be 9 digits"}` |
+| 403 | `{"error":"Guest join is not allowed for this meeting"}` |
 | 404 | `{"error":"Meeting not found"}` |
 | 409 | `{"error":"Meeting has ended"}` |
 

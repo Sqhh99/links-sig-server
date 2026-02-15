@@ -12,8 +12,8 @@ use crate::config::Config;
 use crate::integrations::LiveKitService;
 use crate::services::AuthService;
 use crate::types::{
-    AppError, CreateMeetingResponse, JoinMeetingRequest, JoinMeetingResponse, LeaveMeetingResponse,
-    MeetingRecordItem, MeetingRecordListResponse,
+    AppError, CreateMeetingResponse, GuestJoinMeetingRequest, JoinMeetingRequest,
+    JoinMeetingResponse, LeaveMeetingResponse, MeetingRecordItem, MeetingRecordListResponse,
 };
 
 const MEETING_NUMBER_MAX: u32 = 1_000_000_000;
@@ -25,6 +25,7 @@ struct MeetingRow {
     meeting_no: String,
     room_name: String,
     creator_user_id: Uuid,
+    allow_guest_join: bool,
     status: String,
     created_at: DateTime<Utc>,
 }
@@ -50,6 +51,7 @@ impl MeetingRegistryService {
         config: &Config,
         creator_user_id: Uuid,
         display_name: Option<String>,
+        allow_guest_join: bool,
     ) -> Result<CreateMeetingResponse, AppError> {
         let display_name = display_name
             .map(|value| value.trim().to_string())
@@ -64,14 +66,15 @@ impl MeetingRegistryService {
 
             let inserted = sqlx::query_as::<_, MeetingRow>(
                 r#"
-                INSERT INTO meetings (meeting_no, room_name, creator_user_id)
-                VALUES ($1, $2, $3)
-                RETURNING id, meeting_no, room_name, creator_user_id, status, created_at
+                INSERT INTO meetings (meeting_no, room_name, creator_user_id, allow_guest_join)
+                VALUES ($1, $2, $3, $4)
+                RETURNING id, meeting_no, room_name, creator_user_id, allow_guest_join, status, created_at
                 "#,
             )
             .bind(&meeting_no)
             .bind(&room_name)
             .bind(creator_user_id)
+            .bind(allow_guest_join)
             .fetch_one(db)
             .await;
 
@@ -81,6 +84,7 @@ impl MeetingRegistryService {
                         meeting_no: row.meeting_no.clone(),
                         room_name: row.room_name,
                         share_url: Self::build_share_url(config, &row.meeting_no),
+                        allow_guest_join: row.allow_guest_join,
                         display_name: display_name.clone(),
                         created_at: row.created_at,
                     });
@@ -117,7 +121,7 @@ impl MeetingRegistryService {
 
         let meeting = sqlx::query_as::<_, MeetingRow>(
             r#"
-            SELECT id, meeting_no, room_name, creator_user_id, status, created_at
+            SELECT id, meeting_no, room_name, creator_user_id, allow_guest_join, status, created_at
             FROM meetings
             WHERE meeting_no = $1
             "#,
@@ -177,6 +181,64 @@ impl MeetingRegistryService {
         })
     }
 
+    /// Guest joins a meeting by meeting number.
+    ///
+    /// Guest access is controlled by `meetings.allow_guest_join`.
+    pub async fn guest_join_meeting(
+        db: &PgPool,
+        config: &Config,
+        meeting_no: &str,
+        req: GuestJoinMeetingRequest,
+    ) -> Result<JoinMeetingResponse, AppError> {
+        if !Self::is_valid_meeting_no(meeting_no) {
+            return Err(AppError::bad_request("meeting_no must be 9 digits"));
+        }
+
+        let meeting = sqlx::query_as::<_, MeetingRow>(
+            r#"
+            SELECT id, meeting_no, room_name, creator_user_id, allow_guest_join, status, created_at
+            FROM meetings
+            WHERE meeting_no = $1
+            "#,
+        )
+        .bind(meeting_no)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| AppError::internal(format!("Failed to query meeting: {}", e)))?
+        .ok_or_else(|| AppError::not_found("Meeting not found"))?;
+
+        if meeting.status != "active" {
+            return Err(AppError::conflict("Meeting has ended"));
+        }
+
+        if !meeting.allow_guest_join {
+            return Err(AppError::forbidden(
+                "Guest join is not allowed for this meeting",
+            ));
+        }
+
+        let mut participant_name = req.participant_name.trim().to_string();
+        if participant_name.is_empty() {
+            participant_name = format!("GUEST-{}", Uuid::new_v4().simple());
+        }
+
+        let identity = format!("GUEST-{}", Uuid::new_v4().simple());
+        let token = AuthService::generate_guest_token_for_room_with_identity(
+            config,
+            meeting.room_name.clone(),
+            identity,
+            Some(participant_name),
+        )?;
+
+        Ok(JoinMeetingResponse {
+            meeting_no: meeting.meeting_no,
+            token: token.token,
+            url: token.url,
+            room_name: token.room_name,
+            is_host: token.is_host,
+        })
+    }
+
     /// Leave a meeting by removing current user's participant identity from LiveKit room.
     ///
     /// The operation is idempotent:
@@ -194,7 +256,7 @@ impl MeetingRegistryService {
 
         let meeting = sqlx::query_as::<_, MeetingRow>(
             r#"
-            SELECT id, meeting_no, room_name, creator_user_id, status, created_at
+            SELECT id, meeting_no, room_name, creator_user_id, allow_guest_join, status, created_at
             FROM meetings
             WHERE meeting_no = $1
             "#,
