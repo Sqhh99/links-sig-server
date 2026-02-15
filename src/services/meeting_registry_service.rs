@@ -134,7 +134,9 @@ impl MeetingRegistryService {
 
         let mut participant_name = req.participant_name.trim().to_string();
         if participant_name.is_empty() {
-            participant_name = user_email.to_string();
+            participant_name = Self::get_user_display_name(db, user_id)
+                .await?
+                .unwrap_or_else(|| user_email.to_string());
         }
 
         let is_host = meeting.creator_user_id == user_id;
@@ -388,6 +390,23 @@ impl MeetingRegistryService {
     fn build_share_url(config: &Config, meeting_no: &str) -> String {
         let base = config.app_base_url.trim_end_matches('/');
         format!("{}/join?meetingNo={}", base, meeting_no)
+    }
+
+    async fn get_user_display_name(db: &PgPool, user_id: Uuid) -> Result<Option<String>, AppError> {
+        let display_name = sqlx::query_scalar::<_, Option<String>>(
+            r#"
+            SELECT display_name
+            FROM users
+            WHERE id = $1
+            "#,
+        )
+        .bind(user_id)
+        .fetch_optional(db)
+        .await
+        .map_err(|e| AppError::internal(format!("Failed to query user display name: {}", e)))?
+        .flatten();
+
+        Ok(display_name)
     }
 
     fn is_valid_meeting_no(meeting_no: &str) -> bool {

@@ -59,7 +59,8 @@ curl -X POST http://localhost:8081/api/auth/register \
   -d '{
     "email": "user@example.com",
     "code": "123456",
-    "password": "SecurePass123!"
+    "password": "SecurePass123!",
+    "displayName": "张三"
   }'
 ```
 
@@ -70,6 +71,7 @@ curl -X POST http://localhost:8081/api/auth/register \
 | `email` | string | 是 | 用户邮箱 |
 | `code` | string | 是 | 邮箱验证码 |
 | `password` | string | 是 | 密码（最少 8 位） |
+| `displayName` | string | 否 | 用户展示名（1~64 字符，非登录标识） |
 
 ### 成功响应（201 Created）
 
@@ -77,7 +79,8 @@ curl -X POST http://localhost:8081/api/auth/register \
 {
   "userId": "550e8400-e29b-41d4-a716-446655440000",
   "email": "user@example.com",
-  "token": "eyJ..."
+  "token": "eyJ...",
+  "displayName": "张三"
 }
 ```
 
@@ -113,7 +116,8 @@ curl -X POST http://localhost:8081/api/auth/login \
 {
   "userId": "550e8400-e29b-41d4-a716-446655440000",
   "email": "user@example.com",
-  "token": "eyJ..."
+  "token": "eyJ...",
+  "displayName": "张三"
 }
 ```
 
@@ -127,6 +131,7 @@ curl -X POST http://localhost:8081/api/auth/login \
 
 - 登录邮箱同样会 `trim + lowercase`，因此大小写不敏感。
 - 登录失败不会区分“邮箱不存在”还是“密码错误”。
+- 账号登录标识仍是 `email`，`displayName` 仅用于展示。
 
 ---
 
@@ -150,7 +155,8 @@ curl -X POST http://localhost:8081/api/auth/refresh \
   "userId": "550e8400-e29b-41d4-a716-446655440000",
   "email": "user@example.com",
   "token": "eyJ...",
-  "expiresInSecs": 604800
+  "expiresInSecs": 604800,
+  "displayName": "张三"
 }
 ```
 
@@ -162,6 +168,7 @@ curl -X POST http://localhost:8081/api/auth/refresh \
 | `email` | string | 用户邮箱 |
 | `token` | string | 新签发的 JWT |
 | `expiresInSecs` | number | 新 token 有效期（秒） |
+| `displayName` | string | 用户展示名（未设置时省略） |
 
 ### 可能错误
 

@@ -71,6 +71,9 @@ pub struct RegisterRequest {
     pub code: String,
     /// Password (will be hashed)
     pub password: String,
+    /// Optional profile display name
+    #[serde(default, rename = "displayName")]
+    pub display_name: Option<String>,
 }
 
 /// Login request

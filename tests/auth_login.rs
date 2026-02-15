@@ -45,6 +45,33 @@ async fn create_test_user(db: &sqlx::PgPool, email: &str, password: &str) {
         .unwrap();
 }
 
+async fn create_test_user_with_display_name(
+    db: &sqlx::PgPool,
+    email: &str,
+    password: &str,
+    display_name: &str,
+) {
+    use argon2::{
+        password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
+        Argon2,
+    };
+
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    let password_hash = argon2
+        .hash_password(password.as_bytes(), &salt)
+        .unwrap()
+        .to_string();
+
+    sqlx::query("INSERT INTO users (email, password_hash, display_name) VALUES ($1, $2, $3)")
+        .bind(email)
+        .bind(&password_hash)
+        .bind(display_name)
+        .execute(db)
+        .await
+        .unwrap();
+}
+
 // ============================================================================
 // POST /auth/login
 // ============================================================================
@@ -254,5 +281,48 @@ async fn test_login_case_insensitive_email() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Cleanup
+    cleanup_test_user(&db, test_email).await;
+}
+
+#[tokio::test]
+async fn test_login_returns_display_name_when_set() {
+    let db = setup_test_db().await;
+    run_test_migrations(&db).await;
+
+    let test_email = "test_login_display_name@example.com";
+    let test_password = "securePassword123";
+    let display_name = "Display User";
+    cleanup_test_user(&db, test_email).await;
+    create_test_user_with_display_name(&db, test_email, test_password, display_name).await;
+
+    let config = build_test_config();
+    let fake_email = Arc::new(FakeEmailSender::new());
+    let state = links_sig_rust_server::AppState::with_livekit(
+        config,
+        db.clone(),
+        FakeLiveKitService::new(),
+        fake_email,
+    );
+    let app = build_test_app_with_state(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/login")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"email":"{}","password":"{}"}}"#,
+                    test_email, test_password
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_to_json(response.into_body()).await;
+    assert_eq!(json["displayName"], display_name);
+
     cleanup_test_user(&db, test_email).await;
 }

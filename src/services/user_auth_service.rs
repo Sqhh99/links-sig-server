@@ -18,8 +18,8 @@ use crate::auth::encode_user_token;
 use crate::config::Config;
 use crate::integrations::email::{format_verification_email, EmailSender};
 use crate::types::{
-    AppError, LoginRequest, LoginResponse, RegisterRequest, RegisterResponse,
-    RefreshTokenResponse, RequestCodeResponse, RequestRegisterCodeRequest,
+    AppError, LoginRequest, LoginResponse, RefreshTokenResponse, RegisterRequest, RegisterResponse,
+    RequestCodeResponse, RequestRegisterCodeRequest,
 };
 
 type HmacSha256 = Hmac<Sha256>;
@@ -30,6 +30,7 @@ type HmacSha256 = Hmac<Sha256>;
 pub struct User {
     pub id: Uuid,
     pub email: String,
+    pub display_name: Option<String>,
     pub password_hash: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -122,10 +123,13 @@ impl UserAuthService {
         let subject = "Your verification code";
         let body = format_verification_email(&code, config.code_expiration_secs / 60);
 
-        email_sender.send_email(&email, subject, &body).await.map_err(|e| {
-            warn!("Failed to send verification email to {}: {}", email, e);
-            AppError::internal("Failed to send verification email")
-        })?;
+        email_sender
+            .send_email(&email, subject, &body)
+            .await
+            .map_err(|e| {
+                warn!("Failed to send verification email to {}: {}", email, e);
+                AppError::internal("Failed to send verification email")
+            })?;
 
         info!("Verification code sent to {}", email);
 
@@ -157,6 +161,7 @@ impl UserAuthService {
         let email = req.email.trim().to_lowercase();
         let code = req.code.trim();
         let password = &req.password;
+        let display_name = Self::normalize_display_name(req.display_name)?;
 
         // Validate inputs
         if !Self::is_valid_email(&email) {
@@ -170,9 +175,10 @@ impl UserAuthService {
         }
 
         // Verify code
-        let verification = Self::verify_code(db, &email, code, "register", &config.code_hmac_secret)
-            .await?
-            .ok_or_else(|| AppError::bad_request("Invalid or expired verification code"))?;
+        let verification =
+            Self::verify_code(db, &email, code, "register", &config.code_hmac_secret)
+                .await?
+                .ok_or_else(|| AppError::bad_request("Invalid or expired verification code"))?;
 
         // Double-check email is not registered (race condition protection)
         if Self::email_exists(db, &email).await? {
@@ -185,13 +191,14 @@ impl UserAuthService {
         // Create user
         let user_id: Uuid = sqlx::query_scalar(
             r#"
-            INSERT INTO users (email, password_hash)
-            VALUES ($1, $2)
+            INSERT INTO users (email, password_hash, display_name)
+            VALUES ($1, $2, $3)
             RETURNING id
             "#,
         )
         .bind(&email)
         .bind(&password_hash)
+        .bind(&display_name)
         .fetch_one(db)
         .await?;
 
@@ -221,6 +228,7 @@ impl UserAuthService {
             user_id,
             email,
             token,
+            display_name,
         })
     }
 
@@ -240,7 +248,7 @@ impl UserAuthService {
         // Find user
         let user: Option<User> = sqlx::query_as(
             r#"
-            SELECT id, email, password_hash, created_at, updated_at
+            SELECT id, email, display_name, password_hash, created_at, updated_at
             FROM users
             WHERE email = $1
             "#,
@@ -270,6 +278,7 @@ impl UserAuthService {
             user_id: user.id,
             email: user.email,
             token,
+            display_name: user.display_name,
         })
     }
 
@@ -279,12 +288,12 @@ impl UserAuthService {
         config: &Config,
         user_id_str: &str,
     ) -> Result<RefreshTokenResponse, AppError> {
-        let user_id =
-            Uuid::parse_str(user_id_str).map_err(|_| AppError::unauthorized("Invalid user token"))?;
+        let user_id = Uuid::parse_str(user_id_str)
+            .map_err(|_| AppError::unauthorized("Invalid user token"))?;
 
-        let email = sqlx::query_scalar::<_, String>(
+        let user_row = sqlx::query_as::<_, (String, Option<String>)>(
             r#"
-            SELECT email
+            SELECT email, display_name
             FROM users
             WHERE id = $1
             "#,
@@ -293,6 +302,7 @@ impl UserAuthService {
         .fetch_optional(db)
         .await?
         .ok_or_else(|| AppError::unauthorized("User not found"))?;
+        let (email, display_name) = user_row;
 
         let token = encode_user_token(
             user_id,
@@ -306,6 +316,7 @@ impl UserAuthService {
             email,
             token,
             expires_in_secs: config.jwt_expiration_secs,
+            display_name,
         })
     }
 
@@ -430,6 +441,25 @@ impl UserAuthService {
             return domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.');
         }
         false
+    }
+
+    fn normalize_display_name(display_name: Option<String>) -> Result<Option<String>, AppError> {
+        let Some(display_name) = display_name else {
+            return Ok(None);
+        };
+
+        let normalized = display_name.trim().to_string();
+        if normalized.is_empty() {
+            return Ok(None);
+        }
+
+        if normalized.chars().count() > 64 {
+            return Err(AppError::bad_request(
+                "displayName must be at most 64 characters",
+            ));
+        }
+
+        Ok(Some(normalized))
     }
 }
 

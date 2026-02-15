@@ -43,7 +43,7 @@ fn extract_code_from_email(email_body: &str) -> Option<String> {
 async fn test_request_register_code_returns_200() {
     let db = setup_test_db().await;
     run_test_migrations(&db).await;
-    
+
     let test_email = "test_request_code@example.com";
     cleanup_test_user(&db, test_email).await;
 
@@ -333,5 +333,127 @@ async fn test_register_weak_password_returns_400() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     // Cleanup
+    cleanup_test_user(&db, test_email).await;
+}
+
+#[tokio::test]
+async fn test_register_with_display_name_returns_201_and_persists_value() {
+    let db = setup_test_db().await;
+    run_test_migrations(&db).await;
+
+    let test_email = "test_display_name_register@example.com";
+    let display_name = "Alice";
+    cleanup_test_user(&db, test_email).await;
+
+    let config = build_test_config();
+    let fake_email = Arc::new(FakeEmailSender::new());
+    let state = links_sig_rust_server::AppState::with_livekit(
+        config,
+        db.clone(),
+        FakeLiveKitService::new(),
+        fake_email.clone(),
+    );
+
+    let app = build_test_app_with_state(state.clone());
+    let _ = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/register/request-code")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(r#"{{"email": "{}"}}"#, test_email)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let emails = fake_email.get_emails();
+    let code = extract_code_from_email(&emails[0].body).expect("Should have code");
+
+    let app = build_test_app_with_state(state);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/register")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"email":"{}","code":"{}","password":"securePassword123","displayName":"{}"}}"#,
+                    test_email, code, display_name
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let json = body_to_json(response.into_body()).await;
+    assert_eq!(json["displayName"], display_name);
+
+    let stored_display_name =
+        sqlx::query_scalar::<_, Option<String>>("SELECT display_name FROM users WHERE email = $1")
+            .bind(test_email)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(stored_display_name.as_deref(), Some(display_name));
+
+    cleanup_test_user(&db, test_email).await;
+}
+
+#[tokio::test]
+async fn test_register_display_name_too_long_returns_400() {
+    let db = setup_test_db().await;
+    run_test_migrations(&db).await;
+
+    let test_email = "test_display_name_too_long@example.com";
+    cleanup_test_user(&db, test_email).await;
+
+    let config = build_test_config();
+    let fake_email = Arc::new(FakeEmailSender::new());
+    let state = links_sig_rust_server::AppState::with_livekit(
+        config,
+        db.clone(),
+        FakeLiveKitService::new(),
+        fake_email.clone(),
+    );
+
+    let app = build_test_app_with_state(state.clone());
+    let _ = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/register/request-code")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(r#"{{"email": "{}"}}"#, test_email)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let emails = fake_email.get_emails();
+    let code = extract_code_from_email(&emails[0].body).expect("Should have code");
+    let too_long_display_name = "a".repeat(65);
+
+    let app = build_test_app_with_state(state);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/register")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"email":"{}","code":"{}","password":"securePassword123","displayName":"{}"}}"#,
+                    test_email, code, too_long_display_name
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let json = body_to_json(response.into_body()).await;
+    assert_eq!(json["error"], "displayName must be at most 64 characters");
+
     cleanup_test_user(&db, test_email).await;
 }

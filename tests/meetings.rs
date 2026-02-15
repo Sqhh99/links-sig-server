@@ -37,6 +37,25 @@ async fn create_test_user(db: &sqlx::PgPool, email: &str) -> Uuid {
     user_id
 }
 
+async fn create_test_user_with_display_name(
+    db: &sqlx::PgPool,
+    email: &str,
+    display_name: &str,
+) -> Uuid {
+    let user_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO users (id, email, password_hash, display_name) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(user_id)
+    .bind(email)
+    .bind("test-password-hash")
+    .bind(display_name)
+    .execute(db)
+    .await
+    .unwrap();
+    user_id
+}
+
 async fn build_authed_app_with_livekit(
     email: &str,
     fake_livekit: FakeLiveKitService,
@@ -87,13 +106,12 @@ async fn get_meeting_status(db: &sqlx::PgPool, meeting_no: &str) -> String {
 async fn find_nonexistent_meeting_no(db: &sqlx::PgPool) -> String {
     for _ in 0..64 {
         let candidate = format!("{:09}", (Uuid::new_v4().as_u128() % 1_000_000_000) as u32);
-        let exists = sqlx::query_scalar::<_, i64>(
-            "SELECT 1 FROM meetings WHERE meeting_no = $1 LIMIT 1",
-        )
-        .bind(&candidate)
-        .fetch_optional(db)
-        .await
-        .unwrap();
+        let exists =
+            sqlx::query_scalar::<_, i64>("SELECT 1 FROM meetings WHERE meeting_no = $1 LIMIT 1")
+                .bind(&candidate)
+                .fetch_optional(db)
+                .await
+                .unwrap();
 
         if exists.is_none() {
             return candidate;
@@ -284,6 +302,65 @@ async fn test_join_token_identity_is_jwt_user_id() {
 
     assert_eq!(claims.sub, user_id.to_string());
     assert_eq!(claims.name, Some("Tester Name".to_string()));
+}
+
+#[tokio::test]
+async fn test_join_uses_user_display_name_when_participant_name_is_empty() {
+    let db = setup_test_db().await;
+    run_test_migrations(&db).await;
+
+    let config = build_test_config();
+    let unique_email = format!("display_name_join+{}@example.com", Uuid::new_v4());
+    let display_name = "Display Join Name";
+    let user_id = create_test_user_with_display_name(&db, &unique_email, display_name).await;
+    let token = encode_user_token(user_id, &unique_email, &config.jwt_secret, 3600).unwrap();
+
+    let state = AppState::with_livekit(
+        config.clone(),
+        db.clone(),
+        FakeLiveKitService::new(),
+        Arc::new(FakeEmailSender::new()),
+    );
+    let app = build_test_app_with_state(state);
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/meetings")
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::CREATED);
+
+    let meeting_no = body_to_json(create_response.into_body()).await["meetingNo"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let join_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/meetings/{}/join", meeting_no))
+                .header(header::AUTHORIZATION, format!("Bearer {}", token))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(join_response.status(), StatusCode::OK);
+
+    let join_json = body_to_json(join_response.into_body()).await;
+    let lk_token = join_json["token"].as_str().unwrap();
+    let claims = decode_token(lk_token, &config.api_secret).unwrap();
+
+    assert_eq!(claims.name, Some(display_name.to_string()));
 }
 
 #[tokio::test]

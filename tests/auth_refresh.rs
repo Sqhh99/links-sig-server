@@ -42,6 +42,32 @@ async fn create_test_user(db: &sqlx::PgPool, email: &str, password: &str) -> Uui
     user_id
 }
 
+async fn create_test_user_with_display_name(
+    db: &sqlx::PgPool,
+    email: &str,
+    password: &str,
+    display_name: &str,
+) -> Uuid {
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+    let password_hash = argon2
+        .hash_password(password.as_bytes(), &salt)
+        .unwrap()
+        .to_string();
+
+    let user_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO users (email, password_hash, display_name) VALUES ($1, $2, $3) RETURNING id",
+    )
+    .bind(email)
+    .bind(&password_hash)
+    .bind(display_name)
+    .fetch_one(db)
+    .await
+    .unwrap();
+
+    user_id
+}
+
 #[tokio::test]
 async fn test_refresh_returns_200_and_new_token() {
     let db = setup_test_db().await;
@@ -53,9 +79,13 @@ async fn test_refresh_returns_200_and_new_token() {
     let user_id = create_test_user(&db, &test_email, test_password).await;
 
     let config = build_test_config();
-    let old_token =
-        encode_user_token(user_id, &test_email, &config.jwt_secret, config.jwt_expiration_secs)
-            .unwrap();
+    let old_token = encode_user_token(
+        user_id,
+        &test_email,
+        &config.jwt_secret,
+        config.jwt_expiration_secs,
+    )
+    .unwrap();
 
     let state = links_sig_rust_server::AppState::with_livekit(
         config.clone(),
@@ -148,4 +178,52 @@ async fn test_refresh_invalid_token_returns_401() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     let json = body_to_json(response.into_body()).await;
     assert!(json["error"].as_str().is_some());
+}
+
+#[tokio::test]
+async fn test_refresh_returns_display_name_when_set() {
+    let db = setup_test_db().await;
+    run_test_migrations(&db).await;
+
+    let test_email = format!("refresh_display+{}@example.com", Uuid::new_v4());
+    let display_name = "Refresh User";
+    cleanup_test_user(&db, &test_email).await;
+    let user_id =
+        create_test_user_with_display_name(&db, &test_email, "securePassword123", display_name)
+            .await;
+
+    let config = build_test_config();
+    let old_token = encode_user_token(
+        user_id,
+        &test_email,
+        &config.jwt_secret,
+        config.jwt_expiration_secs,
+    )
+    .unwrap();
+
+    let state = links_sig_rust_server::AppState::with_livekit(
+        config,
+        db.clone(),
+        FakeLiveKitService::new(),
+        Arc::new(FakeEmailSender::new()),
+    );
+    let app = build_test_app_with_state(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/refresh")
+                .header(header::AUTHORIZATION, format!("Bearer {}", old_token))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let json = body_to_json(response.into_body()).await;
+    assert_eq!(json["displayName"], display_name);
+
+    cleanup_test_user(&db, &test_email).await;
 }

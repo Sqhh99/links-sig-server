@@ -119,6 +119,8 @@ pub struct RegisterResponse {
     pub user_id: Uuid,
     pub email: String,
     pub token: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
 }
 
 /// Response for successful login
@@ -128,6 +130,8 @@ pub struct LoginResponse {
     pub user_id: Uuid,
     pub email: String,
     pub token: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
 }
 
 /// Response for refreshing user token
@@ -138,6 +142,8 @@ pub struct RefreshTokenResponse {
     pub email: String,
     pub token: String,
     pub expires_in_secs: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
 }
 
 /// Response for creating a meeting
