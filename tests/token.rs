@@ -15,13 +15,33 @@ use axum::{
     http::{header, Request, StatusCode},
 };
 use tower::ServiceExt;
+use links_sig_rust_server::types::LiveKitRoom;
 
-use support::{body_to_json, build_test_app, setup_test_db, run_test_migrations};
+use support::{
+    body_to_json, build_test_app, build_test_app_with_state, build_test_state_with_livekit,
+    run_test_migrations, setup_test_db, FakeLiveKitService,
+};
 
 async fn setup() -> sqlx::PgPool {
     let db = setup_test_db().await;
     run_test_migrations(&db).await;
     db
+}
+
+fn build_fake_room(name: &str) -> LiveKitRoom {
+    LiveKitRoom {
+        sid: Some(format!("RM_{}", name)),
+        name: name.to_string(),
+        empty_timeout: Some(300),
+        max_participants: Some(10),
+        creation_time: Some(1234567890),
+        turn_password: None,
+        enabled_codecs: None,
+        metadata: Some(String::new()),
+        num_participants: Some(0),
+        num_publishers: Some(0),
+        active_recording: Some(false),
+    }
 }
 
 // ============================================================================
@@ -31,7 +51,9 @@ async fn setup() -> sqlx::PgPool {
 #[tokio::test]
 async fn test_get_token_returns_200() {
     let db = setup().await;
-    let app = build_test_app(db);
+    let fake_livekit = FakeLiveKitService::new().with_room(build_fake_room("test-room"));
+    let state = build_test_state_with_livekit(db, fake_livekit);
+    let app = build_test_app_with_state(state);
 
     let response = app
         .oneshot(
@@ -53,7 +75,9 @@ async fn test_get_token_returns_200() {
 #[tokio::test]
 async fn test_get_token_returns_valid_json() {
     let db = setup().await;
-    let app = build_test_app(db);
+    let fake_livekit = FakeLiveKitService::new().with_room(build_fake_room("test-room"));
+    let state = build_test_state_with_livekit(db, fake_livekit);
+    let app = build_test_app_with_state(state);
 
     let response = app
         .oneshot(
@@ -90,9 +114,11 @@ async fn test_get_token_returns_valid_json() {
 }
 
 #[tokio::test]
-async fn test_get_token_as_host() {
+async fn test_get_token_always_returns_non_host_for_guest() {
     let db = setup().await;
-    let app = build_test_app(db);
+    let fake_livekit = FakeLiveKitService::new().with_room(build_fake_room("test-room"));
+    let state = build_test_state_with_livekit(db, fake_livekit);
+    let app = build_test_app_with_state(state);
 
     let response = app
         .oneshot(
@@ -112,8 +138,8 @@ async fn test_get_token_as_host() {
 
     let json = body_to_json(response.into_body()).await;
 
-    // Verify isHost is reflected in response
-    assert_eq!(json["isHost"], true, "isHost should be true for host request");
+    // Guest token endpoint should never grant host
+    assert_eq!(json["isHost"], false, "isHost should always be false");
 }
 
 #[tokio::test]
@@ -165,11 +191,10 @@ async fn test_get_token_with_invalid_json_returns_error() {
 }
 
 #[tokio::test]
-async fn test_get_token_with_empty_fields_uses_defaults() {
+async fn test_get_token_without_room_name_returns_400() {
     let db = setup().await;
     let app = build_test_app(db);
 
-    // Send minimal JSON - fields should use defaults
     let response = app
         .oneshot(
             Request::builder()
@@ -182,9 +207,58 @@ async fn test_get_token_with_empty_fields_uses_defaults() {
         .await
         .unwrap();
 
-    // Should still work with default values (based on TokenRequest #[serde(default)])
-    assert_eq!(response.status(), StatusCode::OK);
-
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let json = body_to_json(response.into_body()).await;
-    assert!(json.get("token").is_some(), "Should still return a token");
+    assert_eq!(json["error"], "roomName is required");
+}
+
+#[tokio::test]
+async fn test_get_token_for_nonexistent_room_returns_404() {
+    let db = setup().await;
+    let app = build_test_app(db);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/token")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"roomName": "nonexistent-room", "participantName": "guest"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let json = body_to_json(response.into_body()).await;
+    assert_eq!(json["error"], "Room not found");
+}
+
+#[tokio::test]
+async fn test_get_token_for_business_meeting_room_returns_403() {
+    let db = setup().await;
+    let app = build_test_app(db);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/token")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"roomName": "m-123456789", "participantName": "guest"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let json = body_to_json(response.into_body()).await;
+    assert_eq!(
+        json["error"],
+        "Business meetings must be joined via /api/meetings/{meeting_no}/join"
+    );
 }

@@ -2,6 +2,7 @@
 //!
 //! Handles JWT token generation with LiveKit grants.
 
+use chrono::Utc;
 use tracing::info;
 
 use crate::auth::jwt::{AccessToken, VideoGrant};
@@ -17,28 +18,45 @@ impl AuthService {
     ///
     /// This method:
     /// 1. Validates and normalizes the request
-    /// 2. Determines if user should be host (first in room)
-    /// 3. Creates appropriate video grants
-    /// 4. Generates and returns the JWT token
+    /// 2. Ensures the request is for a non-business room
+    /// 3. Allows joining existing rooms only (no implicit room creation)
+    /// 4. Always issues guest token as non-host
+    /// 5. Generates and returns the JWT token
     pub async fn generate_token<L: LiveKitService + ?Sized>(
         config: &Config,
         livekit: &L,
         mut req: TokenRequest,
     ) -> Result<TokenResponse, AppError> {
-        // Set defaults
-        if req.room_name.is_empty() {
-            req.room_name = "default-room".to_string();
-        }
-        if req.participant_name.is_empty() {
-            req.participant_name = format!("user-{}", chrono::Utc::now().timestamp());
-        }
-
         // Trim whitespace
         req.room_name = req.room_name.trim().to_string();
         req.participant_name = req.participant_name.trim().to_string();
 
-        // Check if user should be host
-        let is_host = Self::determine_host_status(livekit, &req).await;
+        if req.room_name.is_empty() {
+            return Err(AppError::bad_request("roomName is required"));
+        }
+
+        if Self::is_business_meeting_room(&req.room_name) {
+            return Err(AppError::forbidden(
+                "Business meetings must be joined via /api/meetings/{meeting_no}/join",
+            ));
+        }
+
+        if req.participant_name.is_empty() {
+            req.participant_name = format!("user-{}", Utc::now().timestamp());
+        }
+
+        if req.is_host {
+            info!(
+                "Ignoring isHost=true for guest token request in room '{}'",
+                req.room_name
+            );
+        }
+
+        if !Self::room_exists(livekit, &req.room_name).await? {
+            return Err(AppError::not_found("Room not found"));
+        }
+
+        let is_host = false;
 
         let response = Self::generate_token_for_room(
             config,
@@ -116,40 +134,19 @@ impl AuthService {
         })
     }
 
-    /// Determine if the user should be marked as host
-    ///
-    /// User becomes host if:
-    /// 1. Explicitly requested (`is_host = true`)
-    /// 2. Room is empty or doesn't exist
-    async fn determine_host_status<L: LiveKitService + ?Sized>(
+    async fn room_exists<L: LiveKitService + ?Sized>(
         livekit: &L,
-        req: &TokenRequest,
-    ) -> bool {
-        if req.is_host {
-            return true;
-        }
+        room_name: &str,
+    ) -> Result<bool, AppError> {
+        let rooms = livekit.list_rooms().await.map_err(AppError::internal)?;
+        Ok(rooms.iter().any(|room| room.name == room_name))
+    }
 
-        // Check if room has participants
-        match livekit.list_participants(&req.room_name).await {
-            Ok(participants) => {
-                if participants.participants.is_empty() {
-                    info!(
-                        "User '{}' is host of room '{}'",
-                        req.participant_name, req.room_name
-                    );
-                    true
-                } else {
-                    false
-                }
-            }
-            Err(_) => {
-                // Room doesn't exist or error, user is host
-                info!(
-                    "User '{}' is host of room '{}'",
-                    req.participant_name, req.room_name
-                );
-                true
-            }
+    fn is_business_meeting_room(room_name: &str) -> bool {
+        if !room_name.starts_with("m-") {
+            return false;
         }
+        let meeting_no = &room_name[2..];
+        meeting_no.len() == 9 && meeting_no.chars().all(|c| c.is_ascii_digit())
     }
 }

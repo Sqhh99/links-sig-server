@@ -6,7 +6,7 @@
 
 ## POST /api/token
 
-生成 LiveKit 访问令牌。
+生成 LiveKit 访问令牌（仅用于加入已存在的普通房间）。
 
 ### 请求
 
@@ -24,11 +24,16 @@ curl -X POST http://localhost:8081/api/token \
 
 | 字段 | 类型 | 必填 | 默认值 | 描述 |
 |------|------|------|--------|------|
-| `roomName` | string | 否 | `"default-room"` | 房间名称 |
+| `roomName` | string | 是 | 无 | 已存在的普通房间名称 |
 | `participantName` | string | 否 | `"user-{timestamp}"` | 参与者名称 |
-| `isHost` | boolean | 否 | `false` | 是否请求主持人权限 |
+| `isHost` | boolean | 否 | `false` | 客户端可传，但服务端游客模式下固定返回 `false` |
 
-> 字符串字段会先 `trim`；当字段缺失或为空字符串时，会使用默认值。
+> 字符串字段会先 `trim`。
+>
+> 限制：
+> - `roomName` 不能为空，否则返回 `400`；
+> - 只允许加入已存在房间，不会隐式创建房间；不存在返回 `404`；
+> - `roomName` 若命中业务会议命名（`m-#########`）会返回 `403`，需改用 `/api/meetings/{meeting_no}/join`。
 
 ### 响应
 
@@ -68,7 +73,7 @@ curl -X POST http://localhost:8081/api/token \
 | `token` | string | LiveKit JWT 访问令牌 |
 | `url` | string | LiveKit WebSocket 服务地址 |
 | `roomName` | string | 实际使用的房间名称 |
-| `isHost` | boolean | 是否为主持人（首个加入者会自动成为主持人） |
+| `isHost` | boolean | 是否为主持人（`/api/token` 游客模式下固定为 `false`） |
 
 ---
 
@@ -85,12 +90,7 @@ curl -X POST http://localhost:8081/api/token \
 
 ### `isHost` 字段说明
 
-`isHost` 是服务端返回给客户端的业务标记，当前判定逻辑为：
-
-1. 请求体中显式传入 `isHost: true`；或
-2. 请求房间当前无参与者（或房间尚不存在）时自动设为 `true`。
-
-该字段会被写入 token metadata（例如 `{"isHost":true}`），用于客户端业务判断。
+`/api/token` 面向游客加入场景，服务端不会授予主持人标记，`isHost` 固定为 `false`（并写入 token metadata）。
 
 ---
 
@@ -107,35 +107,42 @@ curl -X POST http://localhost:8081/api/token \
   }'
 ```
 
-### 主持人加入房间
+### 游客加入已存在房间
 
 ```bash
 curl -X POST http://localhost:8081/api/token \
   -H "Content-Type: application/json" \
   -d '{
     "roomName": "team-meeting",
-    "participantName": "主持人",
-    "isHost": true
+    "participantName": "访客"
   }'
 ```
 
-### 使用默认值
+### 房间不存在（返回 404）
 
 ```bash
-# 不传任何参数，使用默认房间名和自动生成的用户名
 curl -X POST http://localhost:8081/api/token \
   -H "Content-Type: application/json" \
-  -d '{}'
+  -d '{"roomName":"nonexistent-room","participantName":"访客"}'
 ```
-
-返回示例：
 
 ```json
 {
-  "token": "eyJ...",
-  "url": "ws://localhost:7880",
-  "roomName": "default-room",
-  "isHost": true
+  "error": "Room not found"
+}
+```
+
+### 业务会议房间名（返回 403）
+
+```bash
+curl -X POST http://localhost:8081/api/token \
+  -H "Content-Type: application/json" \
+  -d '{"roomName":"m-123456789","participantName":"访客"}'
+```
+
+```json
+{
+  "error": "Business meetings must be joined via /api/meetings/{meeting_no}/join"
 }
 ```
 

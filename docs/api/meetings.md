@@ -85,6 +85,8 @@ curl -X POST http://localhost:8081/api/meetings/123456789/join \
 > 可传 `{}`，服务端会优先回退为当前用户 `displayName`，未设置时再回退为邮箱。
 >
 > 服务端会用当前用户 JWT 的 `user_id` 作为 LiveKit identity，客户端不能自定义 identity。
+>
+> 业务会议（`m-#########`）禁止通过 `/api/token` 直接加入，必须使用本接口。
 
 ### 成功响应（200 OK）
 

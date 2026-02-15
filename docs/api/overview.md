@@ -43,7 +43,8 @@ Authorization: Bearer <token>
 
 - 获取方式：`POST /api/token`
 - 默认有效期：24 小时（服务端固定）
-- 用途：客户端连接 LiveKit WebSocket，加入房间
+- 用途：游客加入已存在普通房间
+- 限制：不允许通过 `/api/token` 进入业务会议房间（`m-#########`），业务会议必须走 `/api/meetings/{meeting_no}/join`
 
 ---
 
