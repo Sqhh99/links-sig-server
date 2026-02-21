@@ -14,8 +14,8 @@ use axum::{
     body::Body,
     http::{header, Request, StatusCode},
 };
-use tower::ServiceExt;
 use links_sig_rust_server::types::LiveKitRoom;
+use tower::ServiceExt;
 
 use support::{
     body_to_json, build_test_app, build_test_app_with_state, build_test_state_with_livekit,
@@ -99,10 +99,22 @@ async fn test_get_token_returns_valid_json() {
 
     // Verify response structure
     assert!(json.is_object(), "Response should be a JSON object");
-    assert!(json.get("token").is_some(), "Response should have 'token' field");
-    assert!(json.get("url").is_some(), "Response should have 'url' field");
-    assert!(json.get("roomName").is_some(), "Response should have 'roomName' field");
-    assert!(json.get("isHost").is_some(), "Response should have 'isHost' field");
+    assert!(
+        json.get("token").is_some(),
+        "Response should have 'token' field"
+    );
+    assert!(
+        json.get("url").is_some(),
+        "Response should have 'url' field"
+    );
+    assert!(
+        json.get("roomName").is_some(),
+        "Response should have 'roomName' field"
+    );
+    assert!(
+        json.get("isHost").is_some(),
+        "Response should have 'isHost' field"
+    );
 
     // Verify token is a non-empty string (JWT format)
     let token = json["token"].as_str().unwrap();

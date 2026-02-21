@@ -52,6 +52,7 @@ impl IntoResponse for AuthError {
             StatusCode::UNAUTHORIZED,
             Json(ErrorResponse {
                 error: self.message,
+                code: None,
             }),
         )
             .into_response()
@@ -72,7 +73,7 @@ impl FromRequestParts<AppState> for OptionalAuth {
         match auth_header {
             Some(TypedHeader(auth)) => {
                 let token = auth.token();
-                
+
                 // Decode and validate token
                 match decode_token(token, &state.config.api_secret) {
                     Ok(claims) => {
@@ -118,7 +119,7 @@ impl FromRequestParts<AppState> for RequiredAuth {
         match auth_header {
             Some(TypedHeader(auth)) => {
                 let token = auth.token();
-                
+
                 // Decode and validate token
                 match decode_token(token, &state.config.api_secret) {
                     Ok(claims) => {

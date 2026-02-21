@@ -6,9 +6,8 @@
 
 use async_trait::async_trait;
 use lettre::{
-    message::header::ContentType,
-    transport::smtp::authentication::Credentials,
-    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+    message::header::ContentType, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
+    AsyncTransport, Message, Tokio1Executor,
 };
 use std::sync::{Arc, Mutex};
 
@@ -18,12 +17,7 @@ use crate::config::Config;
 #[async_trait]
 pub trait EmailSender: Send + Sync {
     /// Send an email
-    async fn send_email(
-        &self,
-        to: &str,
-        subject: &str,
-        body: &str,
-    ) -> Result<(), EmailError>;
+    async fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<(), EmailError>;
 }
 
 /// Email sending error
@@ -71,12 +65,7 @@ impl SmtpEmailSender {
 
 #[async_trait]
 impl EmailSender for SmtpEmailSender {
-    async fn send_email(
-        &self,
-        to: &str,
-        subject: &str,
-        body: &str,
-    ) -> Result<(), EmailError> {
+    async fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<(), EmailError> {
         let email = Message::builder()
             .from(
                 self.sender
@@ -85,11 +74,9 @@ impl EmailSender for SmtpEmailSender {
                         EmailError::InvalidAddress(e.to_string())
                     })?,
             )
-            .to(to
-                .parse()
-                .map_err(|e: lettre::address::AddressError| {
-                    EmailError::InvalidAddress(e.to_string())
-                })?)
+            .to(to.parse().map_err(|e: lettre::address::AddressError| {
+                EmailError::InvalidAddress(e.to_string())
+            })?)
             .subject(subject)
             .header(ContentType::TEXT_PLAIN)
             .body(body.to_string())
@@ -172,12 +159,7 @@ impl Default for FakeEmailSender {
 
 #[async_trait]
 impl EmailSender for FakeEmailSender {
-    async fn send_email(
-        &self,
-        to: &str,
-        subject: &str,
-        body: &str,
-    ) -> Result<(), EmailError> {
+    async fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<(), EmailError> {
         if *self.should_fail.lock().unwrap() {
             return Err(EmailError::SendError("Simulated failure".to_string()));
         }
@@ -227,9 +209,7 @@ mod tests {
         let sender = FakeEmailSender::new();
         sender.set_should_fail(true);
 
-        let result = sender
-            .send_email("test@example.com", "Test", "Body")
-            .await;
+        let result = sender.send_email("test@example.com", "Test", "Body").await;
 
         assert!(result.is_err());
     }

@@ -13,9 +13,8 @@
 //! ```
 
 use lettre::{
-    message::header::ContentType,
-    transport::smtp::authentication::Credentials,
-    Message, SmtpTransport, Transport,
+    message::header::ContentType, transport::smtp::authentication::Credentials, Message,
+    SmtpTransport, Transport,
 };
 use std::env;
 
@@ -46,7 +45,11 @@ fn main() {
 
     // 构建邮件
     let email = Message::builder()
-        .from(format!("{} <{}>", display_name, sender_email).parse().unwrap())
+        .from(
+            format!("{} <{}>", display_name, sender_email)
+                .parse()
+                .unwrap(),
+        )
         .to(recipient.parse().unwrap())
         .subject("Links 测试邮件")
         .header(ContentType::TEXT_PLAIN)

@@ -16,8 +16,8 @@ use crate::auth::decode_user_token;
 use crate::services::{MeetingRegistryService, MeetingService};
 use crate::state::AppState;
 use crate::types::{
-    AppError, CreateMeetingRequest, CreateRoomRequest, GuestJoinMeetingRequest, JoinMeetingRequest,
-    MeetingRecordsQuery,
+    AppError, CreateMeetingRequest, CreateRoomRequest, GuestJoinMeetingRequest, HostMeetingsQuery,
+    JoinMeetingRequest, MeetingRecordsQuery,
 };
 
 /// List all active rooms
@@ -128,6 +128,11 @@ pub async fn handle_create_meeting(
         user_id,
         payload.display_name,
         payload.allow_guest_join.unwrap_or(false),
+        payload.topic,
+        payload.scheduled_start_at,
+        payload.password,
+        payload.no_join_auto_end_minutes,
+        payload.empty_auto_end_minutes,
     )
     .await?;
     Ok((StatusCode::CREATED, Json(response)))
@@ -184,6 +189,19 @@ pub async fn handle_leave_meeting(
     Ok((StatusCode::OK, Json(response)))
 }
 
+/// Cancel a scheduled meeting by meeting number.
+///
+/// POST /api/meetings/{meeting_no}/cancel
+pub async fn handle_cancel_meeting(
+    State(state): State<AppState>,
+    auth_header: Option<TypedHeader<Authorization<Bearer>>>,
+    Path(meeting_no): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let (user_id, _user_email) = parse_user_from_auth_header(auth_header, &state)?;
+    let response = MeetingRegistryService::cancel_meeting(&state.db, &meeting_no, user_id).await?;
+    Ok((StatusCode::OK, Json(response)))
+}
+
 /// List current user's meeting records
 ///
 /// GET /api/me/meeting-records
@@ -196,6 +214,19 @@ pub async fn handle_list_my_meeting_records(
     let response =
         MeetingRegistryService::list_user_records(&state.db, user_id, query.page, query.page_size)
             .await?;
+    Ok((StatusCode::OK, Json(response)))
+}
+
+/// List meetings created by current host user.
+///
+/// GET /api/me/host-meetings
+pub async fn handle_list_my_host_meetings(
+    State(state): State<AppState>,
+    auth_header: Option<TypedHeader<Authorization<Bearer>>>,
+    Query(query): Query<HostMeetingsQuery>,
+) -> Result<impl IntoResponse, AppError> {
+    let (user_id, _email) = parse_user_from_auth_header(auth_header, &state)?;
+    let response = MeetingRegistryService::list_host_meetings(&state.db, user_id, query).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 

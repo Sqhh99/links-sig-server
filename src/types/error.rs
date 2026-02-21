@@ -1,7 +1,6 @@
-//! Unified error type with HTTP response mapping
+//! Unified error type with HTTP response mapping.
 //!
-//! All service errors are converted to AppError, which implements IntoResponse
-//! to ensure consistent error responses across the API.
+//! All service errors are converted to AppError to ensure consistent responses.
 
 use axum::{
     http::StatusCode,
@@ -11,73 +10,102 @@ use axum::{
 
 use super::ErrorResponse;
 
-/// Application error type
-#[derive(Debug)]
-pub enum AppError {
-    /// Internal server error (500)
-    Internal(String),
-    /// Bad request error (400)
-    BadRequest(String),
-    /// Not found error (404)
-    NotFound(String),
-    /// Unauthorized error (401)
-    Unauthorized(String),
-    /// Forbidden error (403)
-    Forbidden(String),
-    /// Conflict error (409) - e.g., email already registered
-    Conflict(String),
-    /// Too many requests (429) - rate limiting
-    TooManyRequests(String),
+/// Application error type with stable machine-readable code support.
+#[derive(Debug, Clone)]
+pub struct AppError {
+    status: StatusCode,
+    message: String,
+    code: Option<&'static str>,
 }
 
 impl AppError {
-    /// Create an internal error
+    fn new(status: StatusCode, msg: impl Into<String>) -> Self {
+        Self {
+            status,
+            message: msg.into(),
+            code: None,
+        }
+    }
+
+    fn new_with_code(status: StatusCode, msg: impl Into<String>, code: &'static str) -> Self {
+        Self {
+            status,
+            message: msg.into(),
+            code: Some(code),
+        }
+    }
+
+    /// Create an internal error.
     pub fn internal(msg: impl Into<String>) -> Self {
-        Self::Internal(msg.into())
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, msg)
     }
 
-    /// Create a bad request error
+    /// Create a bad request error.
     pub fn bad_request(msg: impl Into<String>) -> Self {
-        Self::BadRequest(msg.into())
+        Self::new(StatusCode::BAD_REQUEST, msg)
     }
 
-    /// Create a not found error
-    #[allow(dead_code)]
+    /// Create a bad request error with a stable code.
+    pub fn bad_request_code(msg: impl Into<String>, code: &'static str) -> Self {
+        Self::new_with_code(StatusCode::BAD_REQUEST, msg, code)
+    }
+
+    /// Create a not found error.
     pub fn not_found(msg: impl Into<String>) -> Self {
-        Self::NotFound(msg.into())
+        Self::new(StatusCode::NOT_FOUND, msg)
     }
 
-    /// Create an unauthorized error
+    /// Create a not found error with a stable code.
+    pub fn not_found_code(msg: impl Into<String>, code: &'static str) -> Self {
+        Self::new_with_code(StatusCode::NOT_FOUND, msg, code)
+    }
+
+    /// Create an unauthorized error.
     pub fn unauthorized(msg: impl Into<String>) -> Self {
-        Self::Unauthorized(msg.into())
+        Self::new(StatusCode::UNAUTHORIZED, msg)
     }
 
-    /// Create a forbidden error
+    /// Create an unauthorized error with a stable code.
+    pub fn unauthorized_code(msg: impl Into<String>, code: &'static str) -> Self {
+        Self::new_with_code(StatusCode::UNAUTHORIZED, msg, code)
+    }
+
+    /// Create a forbidden error.
     pub fn forbidden(msg: impl Into<String>) -> Self {
-        Self::Forbidden(msg.into())
+        Self::new(StatusCode::FORBIDDEN, msg)
     }
 
-    /// Create a conflict error
+    /// Create a forbidden error with a stable code.
+    pub fn forbidden_code(msg: impl Into<String>, code: &'static str) -> Self {
+        Self::new_with_code(StatusCode::FORBIDDEN, msg, code)
+    }
+
+    /// Create a conflict error.
     pub fn conflict(msg: impl Into<String>) -> Self {
-        Self::Conflict(msg.into())
+        Self::new(StatusCode::CONFLICT, msg)
     }
 
-    /// Create a too many requests error
+    /// Create a conflict error with a stable code.
+    pub fn conflict_code(msg: impl Into<String>, code: &'static str) -> Self {
+        Self::new_with_code(StatusCode::CONFLICT, msg, code)
+    }
+
+    /// Create a too many requests error.
     pub fn too_many_requests(msg: impl Into<String>) -> Self {
-        Self::TooManyRequests(msg.into())
+        Self::new(StatusCode::TOO_MANY_REQUESTS, msg)
+    }
+
+    /// Create a too many requests error with a stable code.
+    pub fn too_many_requests_code(msg: impl Into<String>, code: &'static str) -> Self {
+        Self::new_with_code(StatusCode::TOO_MANY_REQUESTS, msg, code)
     }
 }
 
 impl std::fmt::Display for AppError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AppError::Internal(msg) => write!(f, "Internal error: {}", msg),
-            AppError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
-            AppError::NotFound(msg) => write!(f, "Not found: {}", msg),
-            AppError::Unauthorized(msg) => write!(f, "Unauthorized: {}", msg),
-            AppError::Forbidden(msg) => write!(f, "Forbidden: {}", msg),
-            AppError::Conflict(msg) => write!(f, "Conflict: {}", msg),
-            AppError::TooManyRequests(msg) => write!(f, "Too many requests: {}", msg),
+        match self.code {
+            Some(code) => write!(f, "{} ({}): {}", self.status, code, self.message),
+            None => write!(f, "{}: {}", self.status, self.message),
         }
     }
 }
@@ -86,47 +114,42 @@ impl std::error::Error for AppError {}
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let (status, message) = match self {
-            AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
-            AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg),
-            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg),
-            AppError::TooManyRequests(msg) => (StatusCode::TOO_MANY_REQUESTS, msg),
-        };
-
-        (status, Json(ErrorResponse { error: message })).into_response()
+        (
+            self.status,
+            Json(ErrorResponse {
+                error: self.message,
+                code: self.code.map(str::to_string),
+            }),
+        )
+            .into_response()
     }
 }
 
-// Convenient conversions from common error types
 impl From<jsonwebtoken::errors::Error> for AppError {
     fn from(err: jsonwebtoken::errors::Error) -> Self {
-        AppError::Internal(format!("JWT error: {}", err))
+        AppError::internal(format!("JWT error: {}", err))
     }
 }
 
 impl From<sqlx::Error> for AppError {
     fn from(err: sqlx::Error) -> Self {
         match err {
-            sqlx::Error::RowNotFound => AppError::NotFound("Resource not found".to_string()),
+            sqlx::Error::RowNotFound => AppError::not_found("Resource not found"),
             sqlx::Error::Database(db_err) => {
-                // Check for unique constraint violation (PostgreSQL error code 23505)
                 if let Some(code) = db_err.code() {
                     if code == "23505" {
-                        return AppError::Conflict("Resource already exists".to_string());
+                        return AppError::conflict("Resource already exists");
                     }
                 }
-                AppError::Internal(format!("Database error: {}", db_err))
+                AppError::internal(format!("Database error: {}", db_err))
             }
-            _ => AppError::Internal(format!("Database error: {}", err)),
+            _ => AppError::internal(format!("Database error: {}", err)),
         }
     }
 }
 
 impl From<argon2::password_hash::Error> for AppError {
     fn from(err: argon2::password_hash::Error) -> Self {
-        AppError::Internal(format!("Password hashing error: {}", err))
+        AppError::internal(format!("Password hashing error: {}", err))
     }
 }

@@ -28,11 +28,7 @@ pub struct AppState {
 
 impl AppState {
     /// Create a new AppState with all dependencies
-    pub fn new(
-        config: Config,
-        db: PgPool,
-        email: Arc<dyn EmailSender>,
-    ) -> Self {
+    pub fn new(config: Config, db: PgPool, email: Arc<dyn EmailSender>) -> Self {
         let config = Arc::new(config);
         let livekit_client = LiveKitClient::new(config.clone());
 
@@ -46,12 +42,7 @@ impl AppState {
 
     /// Create AppState with custom services (for testing)
     #[allow(dead_code)]
-    pub fn with_services<L, E>(
-        config: Config,
-        db: PgPool,
-        livekit: L,
-        email: E,
-    ) -> Self
+    pub fn with_services<L, E>(config: Config, db: PgPool, livekit: L, email: E) -> Self
     where
         L: LiveKitService + 'static,
         E: EmailSender + 'static,

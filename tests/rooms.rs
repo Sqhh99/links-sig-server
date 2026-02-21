@@ -53,7 +53,18 @@ async fn create_test_user(db: &sqlx::PgPool, email: &str) -> Uuid {
 async fn insert_meeting(db: &sqlx::PgPool, meeting_no: &str, creator_user_id: Uuid) {
     let room_name = format!("m-{}", meeting_no);
     sqlx::query(
-        "INSERT INTO meetings (meeting_no, room_name, creator_user_id) VALUES ($1, $2, $3)",
+        r#"
+        INSERT INTO meetings (
+            meeting_no,
+            room_name,
+            creator_user_id,
+            status,
+            topic,
+            scheduled_start_at,
+            opened_at
+        )
+        VALUES ($1, $2, $3, 'open', '', NOW() - INTERVAL '1 minute', NOW())
+        "#,
     )
     .bind(meeting_no)
     .bind(room_name)
@@ -74,13 +85,12 @@ async fn get_meeting_status(db: &sqlx::PgPool, meeting_no: &str) -> String {
 async fn find_nonexistent_meeting_no(db: &sqlx::PgPool) -> String {
     for _ in 0..64 {
         let candidate = format!("{:09}", (Uuid::new_v4().as_u128() % 1_000_000_000) as u32);
-        let exists = sqlx::query_scalar::<_, i64>(
-            "SELECT 1 FROM meetings WHERE meeting_no = $1 LIMIT 1",
-        )
-        .bind(&candidate)
-        .fetch_optional(db)
-        .await
-        .unwrap();
+        let exists =
+            sqlx::query_scalar::<_, i64>("SELECT 1 FROM meetings WHERE meeting_no = $1 LIMIT 1")
+                .bind(&candidate)
+                .fetch_optional(db)
+                .await
+                .unwrap();
 
         if exists.is_none() {
             return candidate;
@@ -466,7 +476,10 @@ async fn test_kick_participant_business_room_requires_host() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/rooms/{}/participants/{}", room_name, guest_user_id))
+                .uri(format!(
+                    "/rooms/{}/participants/{}",
+                    room_name, guest_user_id
+                ))
                 .header(header::AUTHORIZATION, format!("Bearer {}", guest_token))
                 .body(Body::empty())
                 .unwrap(),
@@ -519,7 +532,10 @@ async fn test_kick_participant_business_room_host_allowed() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/rooms/{}/participants/{}", room_name, guest_user_id))
+                .uri(format!(
+                    "/rooms/{}/participants/{}",
+                    room_name, guest_user_id
+                ))
                 .header(header::AUTHORIZATION, format!("Bearer {}", host_token))
                 .body(Body::empty())
                 .unwrap(),

@@ -54,8 +54,12 @@ pub fn encode_user_token(
     };
 
     let header = Header::new(Algorithm::HS256);
-    encode(&header, &claims, &EncodingKey::from_secret(secret.as_bytes()))
-        .map_err(|e| AppError::internal(format!("JWT encoding error: {}", e)))
+    encode(
+        &header,
+        &claims,
+        &EncodingKey::from_secret(secret.as_bytes()),
+    )
+    .map_err(|e| AppError::internal(format!("JWT encoding error: {}", e)))
 }
 
 /// Decode and validate a user access token

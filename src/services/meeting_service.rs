@@ -7,20 +7,26 @@ use chrono::{TimeZone, Utc};
 use tracing::{error, info};
 
 use crate::integrations::LiveKitService;
-use crate::types::{
-    AppError, CreateRoomRequest, ListParticipantsResponse, MessageResponse, Room,
-};
+use crate::types::{AppError, CreateRoomRequest, ListParticipantsResponse, MessageResponse, Room};
 
 /// Meeting service for room and participant operations
 pub struct MeetingService;
 
 impl MeetingService {
+    fn is_room_unavailable_error(err: &str) -> bool {
+        let normalized = err.to_ascii_lowercase();
+        normalized.contains("not_found")
+            || normalized.contains("not found")
+            || normalized.contains("does not exist")
+            || normalized.contains("requested room does not exist")
+            || normalized.contains("no such room")
+    }
+
     /// List all active rooms
-    pub async fn list_rooms<L: LiveKitService + ?Sized>(livekit: &L) -> Result<Vec<Room>, AppError> {
-        let rooms = livekit
-            .list_rooms()
-            .await
-            .map_err(AppError::internal)?;
+    pub async fn list_rooms<L: LiveKitService + ?Sized>(
+        livekit: &L,
+    ) -> Result<Vec<Room>, AppError> {
+        let rooms = livekit.list_rooms().await.map_err(AppError::internal)?;
 
         let room_list: Vec<Room> = rooms
             .into_iter()
@@ -127,7 +133,14 @@ impl MeetingService {
 
         // Delete the room
         if let Err(e) = livekit.delete_room(room_name).await {
-            error!("Failed to delete room: {}", e);
+            if Self::is_room_unavailable_error(&e) {
+                info!(
+                    "Room '{}' already absent while ending meeting, treated as ended",
+                    room_name
+                );
+            } else {
+                error!("Failed to delete room: {}", e);
+            }
         }
 
         info!("Meeting '{}' ended, all participants removed", room_name);

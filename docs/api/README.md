@@ -12,7 +12,7 @@
 | [Token 管理](./token.md) | LiveKit 访问令牌生成 | `token.md` |
 | [房间管理](./rooms.md) | 房间的创建、列表、删除 | `rooms.md` |
 | [参与者管理](./participants.md) | 参与者列表、踢人 | `participants.md` |
-| [会议号与记录](./meetings.md) | 9 位会议号、加入/离开会议、我的会议记录 | `meetings.md` |
+| [会议号与记录](./meetings.md) | 预定会议、主持者开启、游客与密码策略 | `meetings.md` |
 
 ## 快速开始
 
@@ -88,4 +88,6 @@ curl -X POST http://localhost:8081/api/rooms/team-meeting/end
 | POST | `/api/meetings/{meeting_no}/join` | 通过会议号加入会议 |
 | POST | `/api/meetings/{meeting_no}/guest-join` | 游客通过会议号加入会议 |
 | POST | `/api/meetings/{meeting_no}/leave` | 通过会议号离开会议（仅自己） |
+| POST | `/api/meetings/{meeting_no}/cancel` | 取消预定会议（主持者） |
 | GET | `/api/me/meeting-records` | 查询当前用户会议记录 |
+| GET | `/api/me/host-meetings` | 查询当前用户创建的会议 |

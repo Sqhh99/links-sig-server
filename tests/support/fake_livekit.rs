@@ -114,11 +114,11 @@ impl LiveKitService for FakeLiveKitService {
 
         let mut rooms = self.rooms.lock().unwrap();
         rooms.retain(|r| r.name != room_name);
-        
+
         // Also remove participants
         let mut participants = self.participants.lock().unwrap();
         participants.remove(room_name);
-        
+
         Ok(())
     }
 
@@ -126,10 +126,7 @@ impl LiveKitService for FakeLiveKitService {
         self.check_error()?;
 
         let participants = self.participants.lock().unwrap();
-        let room_participants = participants
-            .get(room_name)
-            .cloned()
-            .unwrap_or_default();
+        let room_participants = participants.get(room_name).cloned().unwrap_or_default();
 
         Ok(ListParticipantsResponse {
             participants: room_participants,
@@ -150,9 +147,7 @@ impl LiveKitService for FakeLiveKitService {
 /// Generate a simple UUID-like string for testing
 fn uuid_simple() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let duration = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap();
+    let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     format!("{:x}{:x}", duration.as_secs(), duration.subsec_nanos())
 }
 
@@ -172,9 +167,9 @@ mod tests {
     #[tokio::test]
     async fn test_fake_livekit_create_room() {
         let service = FakeLiveKitService::new();
-        
+
         let room = service.create_room("test-room", 300, 10).await.unwrap();
-        
+
         assert_eq!(room.name, "test-room");
         assert_eq!(room.empty_timeout, Some(300));
         assert_eq!(room.max_participants, Some(10));
@@ -184,14 +179,14 @@ mod tests {
     #[tokio::test]
     async fn test_fake_livekit_list_rooms() {
         let service = FakeLiveKitService::new();
-        
+
         // Initially empty
         let rooms = service.list_rooms().await.unwrap();
         assert!(rooms.is_empty());
-        
+
         // Create a room
         service.create_room("test-room", 300, 10).await.unwrap();
-        
+
         // Now should have one room
         let rooms = service.list_rooms().await.unwrap();
         assert_eq!(rooms.len(), 1);
@@ -202,11 +197,11 @@ mod tests {
     async fn test_fake_livekit_error() {
         let service = FakeLiveKitService::new();
         service.set_next_error("Test error");
-        
+
         let result = service.list_rooms().await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Test error");
-        
+
         // Next call should succeed
         let result = service.list_rooms().await;
         assert!(result.is_ok());

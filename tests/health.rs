@@ -16,7 +16,7 @@ use axum::{
 };
 use tower::ServiceExt;
 
-use support::{body_to_json, build_test_app, setup_test_db, run_test_migrations};
+use support::{body_to_json, build_test_app, run_test_migrations, setup_test_db};
 
 async fn setup() -> sqlx::PgPool {
     let db = setup_test_db().await;
@@ -65,8 +65,14 @@ async fn test_health_check_returns_valid_json() {
 
     // Verify response structure
     assert!(json.is_object(), "Response should be a JSON object");
-    assert!(json.get("status").is_some(), "Response should have 'status' field");
-    assert!(json.get("time").is_some(), "Response should have 'time' field");
+    assert!(
+        json.get("status").is_some(),
+        "Response should have 'status' field"
+    );
+    assert!(
+        json.get("time").is_some(),
+        "Response should have 'time' field"
+    );
 
     // Verify status value
     assert_eq!(json["status"], "ok");

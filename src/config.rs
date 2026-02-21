@@ -43,6 +43,14 @@ pub struct Config {
     pub database_url: String,
 
     // ========================================================================
+    // Meeting Lifecycle Settings
+    // ========================================================================
+    /// Background lifecycle check interval in seconds
+    pub meeting_lifecycle_interval_secs: u64,
+    /// PostgreSQL advisory lock key for lifecycle worker
+    pub meeting_lifecycle_lock_key: i64,
+
+    // ========================================================================
     // JWT Settings (User Auth)
     // ========================================================================
     /// JWT secret for user access tokens (separate from LiveKit API secret)
@@ -109,6 +117,14 @@ impl Config {
             database_url: env::var("DATABASE_URL").unwrap_or_else(|_| {
                 "postgres://links_sig:links_sig_password@localhost:5432/links_sig".to_string()
             }),
+            meeting_lifecycle_interval_secs: env::var("MEETING_LIFECYCLE_INTERVAL_SECS")
+                .unwrap_or_else(|_| "60".to_string())
+                .parse()
+                .unwrap_or(60),
+            meeting_lifecycle_lock_key: env::var("MEETING_LIFECYCLE_LOCK_KEY")
+                .unwrap_or_else(|_| "424242".to_string())
+                .parse()
+                .unwrap_or(424242),
 
             // JWT settings
             jwt_secret: env::var("JWT_SECRET")
@@ -168,6 +184,8 @@ impl Config {
             database_url:
                 "postgres://links_sig_test:links_sig_test_password@localhost:5433/links_sig_test"
                     .to_string(),
+            meeting_lifecycle_interval_secs: 60,
+            meeting_lifecycle_lock_key: 424242,
             jwt_secret: "test-jwt-secret-key".to_string(),
             jwt_expiration_secs: 604800,
             code_hmac_secret: "test-hmac-secret-key".to_string(),

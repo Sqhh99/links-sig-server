@@ -26,7 +26,8 @@ Authorization: Bearer <token>
 
 其中会议业务接口（`/api/meetings*`、`/api/me/meeting-records`）会强制校验用户 JWT。
 此外，`/api/rooms/{room_name}/participants/{identity}` 与 `/api/rooms/{room_name}/end` 在命中业务会议房间（`m-#########` 且存在于 `meetings`）时，也会强制校验主持人权限。
-业务会议状态由服务端维护：创建后为 `active`，当最后一名成员离会或主持人调用 `/api/rooms/{room_name}/end` 后会变为 `ended`。
+业务会议状态由服务端维护：`scheduled/open/ended/cancelled`。
+会议到达预定时间后仅进入“可开启窗口”，只有主持者先加入触发开启后其他人才能加入。
 
 ---
 
@@ -70,7 +71,8 @@ HTTP 状态码：`4xx` 或 `5xx`
 
 ```json
 {
-  "error": "错误描述信息"
+  "error": "错误描述信息",
+  "code": "STABLE_ERROR_CODE"
 }
 ```
 
@@ -96,7 +98,8 @@ HTTP 状态码：`4xx` 或 `5xx`
 
 ```json
 {
-  "error": "Invalid email format"
+  "error": "Invalid email format",
+  "code": null
 }
 ```
 
@@ -149,6 +152,8 @@ HTTP 状态码：`4xx` 或 `5xx`
 | 变量 | 默认值 | 描述 |
 |------|--------|------|
 | `DATABASE_URL` | `postgres://links_sig:links_sig_password@localhost:5432/links_sig` | PostgreSQL 连接字符串 |
+| `MEETING_LIFECYCLE_INTERVAL_SECS` | `60` | 生命周期任务扫描间隔（秒） |
+| `MEETING_LIFECYCLE_LOCK_KEY` | `424242` | 生命周期任务 advisory lock key |
 
 ### 用户 JWT 配置
 

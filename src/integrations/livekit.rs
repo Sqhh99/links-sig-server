@@ -56,6 +56,15 @@ impl LiveKitClient {
             room_client: Arc::new(room_client),
         }
     }
+
+    fn is_room_unavailable_error(err: &str) -> bool {
+        let normalized = err.to_ascii_lowercase();
+        normalized.contains("not_found")
+            || normalized.contains("not found")
+            || normalized.contains("does not exist")
+            || normalized.contains("requested room does not exist")
+            || normalized.contains("no such room")
+    }
 }
 
 #[async_trait]
@@ -131,7 +140,15 @@ impl LiveKitService for LiveKitClient {
                 Ok(())
             }
             Err(e) => {
-                error!("Failed to delete room: {}", e);
+                let err_text = e.to_string();
+                if Self::is_room_unavailable_error(&err_text) {
+                    info!(
+                        "Room '{}' already absent while deleting (treated as idempotent): {}",
+                        room_name, err_text
+                    );
+                } else {
+                    error!("Failed to delete room: {}", err_text);
+                }
                 Err(format!("Failed to delete room: {}", e))
             }
         }

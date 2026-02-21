@@ -32,6 +32,8 @@ pub struct TokenResponse {
 #[derive(Debug, Clone, Serialize)]
 pub struct ErrorResponse {
     pub error: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
 }
 
 /// Health check response
@@ -153,7 +155,17 @@ pub struct CreateMeetingResponse {
     pub meeting_no: String,
     pub room_name: String,
     pub share_url: String,
+    pub status: String,
+    pub topic: String,
+    pub scheduled_start_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opened_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<DateTime<Utc>>,
     pub allow_guest_join: bool,
+    pub requires_password: bool,
+    pub no_join_auto_end_minutes: i32,
+    pub empty_auto_end_minutes: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -199,6 +211,37 @@ pub struct MeetingRecordItem {
 #[serde(rename_all = "camelCase")]
 pub struct MeetingRecordListResponse {
     pub records: Vec<MeetingRecordItem>,
+    pub page: u32,
+    pub page_size: u32,
+}
+
+/// Host meeting list item for current user.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostMeetingItem {
+    pub meeting_no: String,
+    pub room_name: String,
+    pub topic: String,
+    pub status: String,
+    pub scheduled_start_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opened_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cancelled_at: Option<DateTime<Utc>>,
+    pub allow_guest_join: bool,
+    pub requires_password: bool,
+    pub no_join_auto_end_minutes: i32,
+    pub empty_auto_end_minutes: i32,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Paginated response for host meetings.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostMeetingListResponse {
+    pub meetings: Vec<HostMeetingItem>,
     pub page: u32,
     pub page_size: u32,
 }

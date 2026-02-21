@@ -38,6 +38,7 @@ use tracing_subscriber::FmtSubscriber;
 use crate::config::Config;
 use crate::integrations::{create_pool, run_migrations, SmtpEmailSender};
 use crate::routes::build_api_router;
+use crate::services::MeetingLifecycleService;
 use crate::state::AppState;
 
 #[tokio::main]
@@ -75,6 +76,11 @@ async fn main() {
 
     // Create application state
     let state = AppState::new(config.clone(), db, email);
+    let lifecycle_state = state.clone();
+
+    tokio::spawn(async move {
+        MeetingLifecycleService::run_loop(lifecycle_state).await;
+    });
 
     // Build and run server
     let app = build_app(state);
@@ -107,6 +113,10 @@ fn log_startup_info(config: &Config) {
     info!("API Key: {}", config.api_key);
     info!("HTTPS enabled: {}", config.enable_https);
     info!("App base URL: {}", config.app_base_url);
+    info!(
+        "Meeting lifecycle interval: {}s",
+        config.meeting_lifecycle_interval_secs
+    );
     info!("Database: {}", mask_connection_string(&config.database_url));
     info!("SMTP Host: {}", config.smtp_host);
 }

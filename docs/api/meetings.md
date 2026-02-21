@@ -1,282 +1,219 @@
-# 会议号与会议记录 API
+# 会议号与预定会议 API
 
-业务会议接口：服务端自动生成 `9` 位数字会议号，支持分享链接加入/离开，以及用户维度的会议记录查询。
+业务会议基于 `9` 位会议号（例如 `123456789`），支持预定开始时间、主持者开启、游客准入、会议密码、自动关闭。
+
+## 关键时间与状态语义
+
+- `scheduledStartAt`：预定开始时间。
+- `openedAt`：主持者实际开启时间。
+- `endedAt`：实际结束时间（手动结束或自动关闭）。
+- `status`：`scheduled | open | ended | cancelled`。
+
+> 重要：会议到达 `scheduledStartAt` 只表示进入“可开启窗口”，并不代表可加入。  
+> 只有主持者先成功加入并触发开启（写入 `openedAt`）后，其他成员/游客才可加入。
 
 ---
 
 ## 认证要求
 
-以下接口需要用户 JWT（登录或注册返回的 token）：
-
-```http
-Authorization: Bearer <user-jwt>
-```
+需要用户 JWT：
 
 - `POST /api/meetings`
 - `POST /api/meetings/{meeting_no}/join`
 - `POST /api/meetings/{meeting_no}/leave`
+- `POST /api/meetings/{meeting_no}/cancel`
 - `GET /api/me/meeting-records`
+- `GET /api/me/host-meetings`
 
-`POST /api/meetings/{meeting_no}/guest-join` 为游客入口，不需要用户 JWT。
+无需用户 JWT：
 
-未携带或无效时返回：
-
-```json
-{
-  "error": "Authorization header required"
-}
-```
+- `POST /api/meetings/{meeting_no}/guest-join`
 
 ---
 
 ## POST /api/meetings
 
-创建会议。服务端会自动随机生成唯一 `9` 位会议号（例如 `012345678`）。
+创建预定会议。
 
-### 请求
+### 请求示例
 
 ```bash
 curl -X POST http://localhost:8081/api/meetings \
   -H "Authorization: Bearer <user-jwt>" \
   -H "Content-Type: application/json" \
   -d '{
-    "allowGuestJoin": false
+    "topic": "项目周会",
+    "scheduledStartAt": "2026-02-20T14:30:00Z",
+    "allowGuestJoin": true,
+    "password": "secret12",
+    "noJoinAutoEndMinutes": 15,
+    "emptyAutoEndMinutes": 10
   }'
 ```
 
-### 成功响应（201 Created）
+### 请求字段
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `topic` | string | 否 | `""` | 会议主题（最长 200） |
+| `scheduledStartAt` | string | 否 | `now` | UTC ISO-8601 |
+| `allowGuestJoin` | boolean | 否 | `false` | 是否允许游客加入 |
+| `password` | string | 否 | 无 | 会议密码，长度 `6~32` |
+| `noJoinAutoEndMinutes` | number | 否 | `15` | 开始后无人入会自动结束阈值 |
+| `emptyAutoEndMinutes` | number | 否 | `10` | 开启后空房自动结束阈值 |
+
+### 成功响应（201）
 
 ```json
 {
   "meetingNo": "123456789",
   "roomName": "m-123456789",
   "shareUrl": "http://localhost:3000/join?meetingNo=123456789",
-  "allowGuestJoin": false,
-  "createdAt": "2026-02-07T12:34:56Z"
+  "status": "scheduled",
+  "topic": "项目周会",
+  "scheduledStartAt": "2026-02-20T14:30:00Z",
+  "allowGuestJoin": true,
+  "requiresPassword": true,
+  "noJoinAutoEndMinutes": 15,
+  "emptyAutoEndMinutes": 10,
+  "createdAt": "2026-02-20T13:00:00Z"
 }
 ```
-
-> 说明：请求体可省略，默认 `allowGuestJoin = false`。
-
-### 字段说明
-
-| 字段 | 类型 | 描述 |
-|------|------|------|
-| `meetingNo` | string | 9 位数字会议号 |
-| `roomName` | string | 对应 LiveKit 房间名（格式：`m-{meetingNo}`） |
-| `shareUrl` | string | 客户端可直接分享的入会链接 |
-| `allowGuestJoin` | boolean | 是否允许游客加入（默认 `false`） |
-| `createdAt` | string | 创建时间（ISO 8601） |
 
 ---
 
 ## POST /api/meetings/{meeting_no}/join
 
-通过会议号加入会议，并返回 LiveKit 连接 token。
+登录用户按会议号加入会议（主持者可触发开启）。
 
-### 请求
+### 请求示例
 
 ```bash
 curl -X POST http://localhost:8081/api/meetings/123456789/join \
   -H "Authorization: Bearer <user-jwt>" \
   -H "Content-Type: application/json" \
   -d '{
-    "participantName": "张三"
+    "participantName": "张三",
+    "meetingPassword": "secret12"
   }'
 ```
 
-### 路径参数
+### 规则
 
-| 参数 | 类型 | 描述 |
-|------|------|------|
-| `meeting_no` | string | 9 位数字会议号 |
-
-### 请求体
-
-| 字段 | 类型 | 必填 | 默认值 | 描述 |
-|------|------|------|--------|------|
-| `participantName` | string | 否 | `displayName -> 用户邮箱` | 进入会议时的显示名（不作为 identity） |
-
-> 可传 `{}`，服务端会优先回退为当前用户 `displayName`，未设置时再回退为邮箱。
->
-> 服务端会用当前用户 JWT 的 `user_id` 作为 LiveKit identity，客户端不能自定义 identity。
->
-> 业务会议（`m-#########`）禁止通过 `/api/token` 直接加入，必须使用本接口。
-
-### 成功响应（200 OK）
-
-```json
-{
-  "meetingNo": "123456789",
-  "token": "eyJ...",
-  "url": "ws://localhost:7880",
-  "roomName": "m-123456789",
-  "isHost": false
-}
-```
-
-### 可能错误
-
-| 状态码 | 示例 |
-|--------|------|
-| 400 | `{"error":"meeting_no must be 9 digits"}` |
-| 404 | `{"error":"Meeting not found"}` |
-| 409 | `{"error":"Meeting has ended"}` |
+- `meeting_no` 必须是 `9` 位数字。
+- 当前用户为主持者（`JWT user_id == creator_user_id`）时：
+  - 到达预定时间后首次加入会触发 `scheduled -> open`。
+  - 主持者可免输入会议密码。
+- 非主持者：
+  - 未到预定时间：`409` + `code=MEETING_NOT_STARTED`
+  - 到点但主持者未开启：`409` + `code=HOST_NOT_JOINED`
+  - 设密码且未提供：`403` + `code=PASSWORD_REQUIRED`
+  - 密码错误：`403` + `code=PASSWORD_INVALID`
 
 ---
 
 ## POST /api/meetings/{meeting_no}/guest-join
 
-游客通过会议号加入会议（无需用户 JWT）。
+游客按会议号加入会议（无需用户 JWT）。
 
-只有当会议创建时 `allowGuestJoin = true` 才允许加入。
-
-### 请求
+### 请求示例
 
 ```bash
 curl -X POST http://localhost:8081/api/meetings/123456789/guest-join \
   -H "Content-Type: application/json" \
   -d '{
-    "participantName": "访客A"
+    "participantName": "访客A",
+    "meetingPassword": "secret12"
   }'
 ```
 
-### 路径参数
+### 规则
 
-| 参数 | 类型 | 描述 |
-|------|------|------|
-| `meeting_no` | string | 9 位数字会议号 |
-
-### 请求体
-
-| 字段 | 类型 | 必填 | 默认值 | 描述 |
-|------|------|------|--------|------|
-| `participantName` | string | 否 | `GUEST-xxxx` | 游客显示名（不作为 identity） |
-
-### 成功响应（200 OK）
-
-```json
-{
-  "meetingNo": "123456789",
-  "token": "eyJ...",
-  "url": "ws://localhost:7880",
-  "roomName": "m-123456789",
-  "isHost": false
-}
-```
+- 仅当 `allowGuestJoin=true` 才允许。
+- 未到预定时间：`409` + `MEETING_NOT_STARTED`
+- 到点但主持者未开启：`409` + `HOST_NOT_JOINED`
+- 设密码时游客必须提供正确密码。
 
 ### 游客权限边界
 
-- `isHost` 固定为 `false`；
-- token 仅允许订阅（`canSubscribe=true`）；
-- 禁止发布音视频与数据（`canPublish=false`，`canPublishData=false`）；
-- 不能踢人、不能结束会议。
-
-### 可能错误
-
-| 状态码 | 示例 |
-|--------|------|
-| 400 | `{"error":"meeting_no must be 9 digits"}` |
-| 403 | `{"error":"Guest join is not allowed for this meeting"}` |
-| 404 | `{"error":"Meeting not found"}` |
-| 409 | `{"error":"Meeting has ended"}` |
+- `isHost=false`
+- `canPublish=false`
+- `canSubscribe=true`
+- `canPublishData=false`
 
 ---
 
 ## POST /api/meetings/{meeting_no}/leave
 
-按会议号离开会议（只允许当前登录用户离开自己会话，幂等）。
+当前登录用户离会（只允许自己离会，幂等）。
 
-当离会后该会议房间已无人时，服务端会把 `meetings.status` 从 `active` 更新为 `ended`（并写入 `ended_at`）。后续再调用 `/join` 会返回 `409`。
+说明：
 
-### 请求
+- 主持者离会：立即结束会议（会议状态改为 `ended`）；
+- 若离会者是最后一名成员：立即结束会议（状态改为 `ended`）；
+- 其他情况（仍有人在会中）：会议保持 `open`。
 
-```bash
-curl -X POST http://localhost:8081/api/meetings/123456789/leave \
-  -H "Authorization: Bearer <user-jwt>"
-```
+---
 
-### 路径参数
+## POST /api/meetings/{meeting_no}/cancel
 
-| 参数 | 类型 | 描述 |
-|------|------|------|
-| `meeting_no` | string | 9 位数字会议号 |
+主持者取消会议（仅 `scheduled` 可取消）。
 
-### 成功响应（200 OK）
+### 成功响应（200）
 
 ```json
 {
-  "message": "Left meeting",
-  "meetingNo": "123456789",
-  "roomName": "m-123456789",
-  "identity": "550e8400-e29b-41d4-a716-446655440000",
-  "left": true
+  "message": "Meeting cancelled"
 }
 ```
 
-重复调用（用户已不在房间）：
+### 常见错误
 
-```json
-{
-  "message": "Already left meeting",
-  "meetingNo": "123456789",
-  "roomName": "m-123456789",
-  "identity": "550e8400-e29b-41d4-a716-446655440000",
-  "left": false
-}
-```
-
-### 字段说明
-
-| 字段 | 类型 | 描述 |
-|------|------|------|
-| `message` | string | 离会结果描述 |
-| `meetingNo` | string | 9 位会议号 |
-| `roomName` | string | 对应房间名 |
-| `identity` | string | 当前用户 identity（固定为 JWT `user_id`） |
-| `left` | boolean | 本次调用是否实际执行了移除 |
-
-### 可能错误
-
-| 状态码 | 示例 |
-|--------|------|
-| 400 | `{"error":"meeting_no must be 9 digits"}` |
-| 401 | `{"error":"Authorization header required"}` |
-| 404 | `{"error":"Meeting not found"}` |
+- 非主持者：`403`
+- 状态非 `scheduled`：`409` + `code=MEETING_NOT_CANCELLABLE`
 
 ---
 
 ## GET /api/me/meeting-records
 
-查询当前用户的会议记录（按最近加入时间倒序）。
+查询当前用户的历史参会记录（参与维度）。
 
-### 请求
+---
 
-```bash
-curl -X GET "http://localhost:8081/api/me/meeting-records?page=1&pageSize=20" \
-  -H "Authorization: Bearer <user-jwt>"
-```
+## GET /api/me/host-meetings
+
+查询当前用户创建的会议（主持者视角）。
 
 ### 查询参数
 
-| 参数 | 类型 | 必填 | 默认值 | 描述 |
-|------|------|------|--------|------|
-| `page` | number | 否 | `1` | 页码（最小 1） |
-| `pageSize` | number | 否 | `20` | 每页条数（`1~100`） |
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `page` | number | `1` | 页码 |
+| `pageSize` | number | `20` | 每页 `1~100` |
+| `status` | string | 无 | `scheduled/open/ended/cancelled` |
+| `timeFrom` | string | 无 | 按 `scheduledStartAt` 下界筛选 |
+| `timeTo` | string | 无 | 按 `scheduledStartAt` 上界筛选 |
+| `includeEnded` | boolean | `false` | 不传时默认只返回 `scheduled/open` |
 
-### 成功响应（200 OK）
+### 成功响应（200）
 
 ```json
 {
-  "records": [
+  "meetings": [
     {
       "meetingNo": "123456789",
       "roomName": "m-123456789",
-      "meetingStatus": "active",
-      "creatorUserId": "550e8400-e29b-41d4-a716-446655440000",
-      "firstJoinedAt": "2026-02-07T12:35:10Z",
-      "lastJoinedAt": "2026-02-07T13:01:42Z",
-      "joinCount": 2
+      "topic": "项目周会",
+      "status": "scheduled",
+      "scheduledStartAt": "2026-02-20T14:30:00Z",
+      "openedAt": null,
+      "endedAt": null,
+      "cancelledAt": null,
+      "allowGuestJoin": true,
+      "requiresPassword": true,
+      "noJoinAutoEndMinutes": 15,
+      "emptyAutoEndMinutes": 10,
+      "createdAt": "2026-02-20T13:00:00Z"
     }
   ],
   "page": 1,
@@ -284,11 +221,13 @@ curl -X GET "http://localhost:8081/api/me/meeting-records?page=1&pageSize=20" \
 }
 ```
 
-### 记录去重规则
+---
 
-- 同一用户重复加入同一会议，不会新增多条记录；
-- 会更新该条记录的 `lastJoinedAt`；
-- `joinCount` 自增。
-- `meetingStatus` 由服务端会议生命周期维护：
-  - 默认创建后为 `active`；
-  - 当会议房间无人（例如最后一人 `leave`）或主持人调用 `/rooms/{room_name}/end` 后会变为 `ended`。
+## 错误响应格式（含稳定 code）
+
+```json
+{
+  "error": "Meeting host has not opened the meeting yet",
+  "code": "HOST_NOT_JOINED"
+}
+```
