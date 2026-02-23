@@ -144,7 +144,7 @@ fn build_app(state: AppState) -> Router {
         .allow_credentials(false); // Note: Can't use credentials with Any origin
 
     // Static files path - look in parent directory's static folder
-    let static_path = PathBuf::from("../static");
+    let static_path = PathBuf::from("./static");
     let index_file = static_path.join("index.html");
 
     // Build API routes

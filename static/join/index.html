@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>加入会议 — Links Meeting</title>
+  <meta name="description" content="通过链接加入 Links 会议，无需登录即可观看音视频。" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+  <!-- ============================================================
+       JOIN VIEW — Pre-meeting entry form
+       ============================================================ -->
+  <div id="join-view">
+    <div class="join-card">
+      <div class="join-card__logo">
+        <div class="join-card__logo-icon">🔗</div>
+        <span class="join-card__logo-text">Links Meeting</span>
+      </div>
+      <p class="join-card__subtitle">你被邀请加入一场会议</p>
+
+      <div class="join-card__meeting-no">
+        <div class="join-card__meeting-no-label">会议号</div>
+        <div class="join-card__meeting-no-value" id="display-meeting-no">—</div>
+      </div>
+
+      <div class="form-group hidden" id="password-group">
+        <label for="input-password">会议密码</label>
+        <input type="password" id="input-password" placeholder="请输入会议密码" maxlength="32" autocomplete="off" />
+      </div>
+
+      <button class="btn btn--primary" id="btn-join" type="button">
+        加入会议
+      </button>
+
+      <div class="error-msg" id="join-error"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MEETING VIEW — In-meeting layout
+       ============================================================ -->
+  <div id="meeting-view">
+    <!-- Top bar -->
+    <div class="topbar">
+      <div class="topbar__info">
+        <div class="topbar__topic" id="meeting-topic">会议</div>
+        <div class="topbar__meta">
+          <span id="meeting-no-display"></span>
+          <span id="meeting-duration"></span>
+        </div>
+      </div>
+      <div class="topbar__actions">
+        <button class="topbar__member-toggle" id="btn-toggle-members" type="button">
+          👥 成员 <span class="badge" id="member-count">0</span>
+        </button>
+        <button class="btn btn--danger" id="btn-leave" type="button">离开</button>
+      </div>
+    </div>
+
+    <!-- Body: video grid + sidebar -->
+    <div class="meeting-body">
+      <div class="video-grid" id="video-grid" data-count="0">
+        <div class="empty-state" id="empty-state">
+          <div class="empty-state__icon">📹</div>
+          <div>等待其他参与者开启视频…</div>
+        </div>
+      </div>
+
+      <div class="sidebar" id="sidebar">
+        <div class="sidebar__header">
+          成员列表
+          <button class="sidebar__close" id="btn-close-sidebar" type="button">✕</button>
+        </div>
+        <div class="sidebar__list" id="member-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="/js/livekit-client.umd.min.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
