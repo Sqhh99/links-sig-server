@@ -2,3 +2,4 @@ target
 .env
 .env.example
 examples\send_test_email.rs
+.cargo
