@@ -1,5 +1,6 @@
 target
 .env
+.env.deploy
 .env.example
 examples\send_test_email.rs
 .cargo

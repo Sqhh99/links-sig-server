@@ -1,0 +1,23 @@
+# 启动/重启
+# docker compose --env-file .env.deploy -f docker-compose.deploy.yml up -d
+
+# 查看日志（实时跟踪）
+# docker compose --env-file .env.deploy -f docker-compose.deploy.yml logs -f
+
+# 停止并移除容器
+# docker compose --env-file .env.deploy -f docker-compose.deploy.yml down
+
+# $env:DATABASE_URL="postgres://links_sig_test:links_sig_test_password@localhost:5433/links_sig_test"; cargo sqlx migrate run
+# 
+# docker build -t links-sig-server:latest .
+
+services:
+  app:
+    image: ${APP_IMAGE:-links-sig-server:latest}
+    restart: unless-stopped
+    env_file:
+      - ${DEPLOY_ENV_FILE:-.env.deploy}
+    ports:
+      - "${HOST_PORT:-8081}:8081"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
