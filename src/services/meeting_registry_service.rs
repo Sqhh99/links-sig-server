@@ -214,7 +214,7 @@ impl MeetingRegistryService {
         config: &Config,
         meeting_no: &str,
         user_id: Uuid,
-        user_email: &str,
+        username: &str,
         req: JoinMeetingRequest,
     ) -> Result<JoinMeetingResponse, AppError> {
         if !Self::is_valid_meeting_no(meeting_no) {
@@ -303,7 +303,7 @@ impl MeetingRegistryService {
         if participant_name.is_empty() {
             participant_name = Self::get_user_display_name(db, user_id)
                 .await?
-                .unwrap_or_else(|| user_email.to_string());
+                .unwrap_or_else(|| username.to_string());
         }
 
         let identity = user_id.to_string();

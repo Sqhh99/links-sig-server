@@ -13,13 +13,11 @@ use axum::{
     http::{header, Request, StatusCode},
 };
 use chrono::{Duration, SecondsFormat, Utc};
-use std::sync::Arc;
 use tower::ServiceExt;
 use uuid::Uuid;
 
 use links_sig_rust_server::auth::encode_user_token;
 use links_sig_rust_server::auth::jwt::decode_token;
-use links_sig_rust_server::integrations::FakeEmailSender;
 use links_sig_rust_server::services::MeetingLifecycleService;
 use links_sig_rust_server::{AppState, Config};
 use support::{
@@ -27,11 +25,11 @@ use support::{
     FakeLiveKitService,
 };
 
-async fn create_test_user(db: &sqlx::PgPool, email: &str) -> Uuid {
+async fn create_test_user(db: &sqlx::PgPool, username: &str) -> Uuid {
     let user_id = Uuid::new_v4();
-    sqlx::query("INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3)")
+    sqlx::query("INSERT INTO users (id, username, password_hash) VALUES ($1, $2, $3)")
         .bind(user_id)
-        .bind(email)
+        .bind(username)
         .bind("test-password-hash")
         .execute(db)
         .await
@@ -41,15 +39,15 @@ async fn create_test_user(db: &sqlx::PgPool, email: &str) -> Uuid {
 
 async fn create_test_user_with_display_name(
     db: &sqlx::PgPool,
-    email: &str,
+    username: &str,
     display_name: &str,
 ) -> Uuid {
     let user_id = Uuid::new_v4();
     sqlx::query(
-        "INSERT INTO users (id, email, password_hash, display_name) VALUES ($1, $2, $3, $4)",
+        "INSERT INTO users (id, username, password_hash, display_name) VALUES ($1, $2, $3, $4)",
     )
     .bind(user_id)
-    .bind(email)
+    .bind(username)
     .bind("test-password-hash")
     .bind(display_name)
     .execute(db)
@@ -59,29 +57,24 @@ async fn create_test_user_with_display_name(
 }
 
 async fn build_authed_app_with_livekit(
-    email: &str,
+    username: &str,
     fake_livekit: FakeLiveKitService,
 ) -> (axum::Router, sqlx::PgPool, String, Uuid, Config) {
     let db = setup_test_db().await;
     run_test_migrations(&db).await;
 
     let config = build_test_config();
-    let unique_email = format!("{}+{}@example.com", email, Uuid::new_v4());
-    let user_id = create_test_user(&db, &unique_email).await;
-    let token = encode_user_token(user_id, &unique_email, &config.jwt_secret, 3600).unwrap();
+    let unique_username = format!("{}_{}", username, Uuid::new_v4());
+    let user_id = create_test_user(&db, &unique_username).await;
+    let token = encode_user_token(user_id, &unique_username, &config.jwt_secret, 3600).unwrap();
 
-    let state = AppState::with_livekit(
-        config.clone(),
-        db.clone(),
-        fake_livekit,
-        Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(config.clone(), db.clone(), fake_livekit);
     let app = build_test_app_with_state(state);
     (app, db, token, user_id, config)
 }
 
-async fn build_authed_app(email: &str) -> (axum::Router, sqlx::PgPool, String, Uuid, Config) {
-    build_authed_app_with_livekit(email, FakeLiveKitService::new()).await
+async fn build_authed_app(username: &str) -> (axum::Router, sqlx::PgPool, String, Uuid, Config) {
+    build_authed_app_with_livekit(username, FakeLiveKitService::new()).await
 }
 
 async fn insert_meeting(db: &sqlx::PgPool, meeting_no: &str, creator_user_id: Uuid) {
@@ -248,12 +241,7 @@ async fn test_create_meeting_requires_auth() {
     let db = setup_test_db().await;
     run_test_migrations(&db).await;
 
-    let state = AppState::with_livekit(
-        build_test_config(),
-        db,
-        FakeLiveKitService::new(),
-        Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(build_test_config(), db, FakeLiveKitService::new());
     let app = build_test_app_with_state(state);
 
     let response = app
@@ -272,7 +260,7 @@ async fn test_create_meeting_requires_auth() {
 
 #[tokio::test]
 async fn test_create_meeting_returns_meeting_number_and_share_url() {
-    let (app, db, token, _user_id, _config) = build_authed_app("meeting_creator@example.com").await;
+    let (app, db, token, _user_id, _config) = build_authed_app("meeting_creator").await;
 
     let response = app
         .oneshot(
@@ -306,8 +294,7 @@ async fn test_create_meeting_returns_meeting_number_and_share_url() {
 
 #[tokio::test]
 async fn test_create_meeting_allow_guest_join_true_persisted() {
-    let (app, db, token, _user_id, _config) =
-        build_authed_app("allow_guest_true@example.com").await;
+    let (app, db, token, _user_id, _config) = build_authed_app("allow_guest_true").await;
 
     let response = app
         .oneshot(
@@ -332,8 +319,7 @@ async fn test_create_meeting_allow_guest_join_true_persisted() {
 
 #[tokio::test]
 async fn test_create_meeting_then_host_can_join_immediately() {
-    let (app, _db, token, _user_id, _config) =
-        build_authed_app("immediate_join_creator@example.com").await;
+    let (app, _db, token, _user_id, _config) = build_authed_app("immediate_join_creator").await;
 
     let create_response = app
         .clone()
@@ -371,7 +357,7 @@ async fn test_create_meeting_then_host_can_join_immediately() {
 
 #[tokio::test]
 async fn test_join_same_meeting_twice_does_not_duplicate_record() {
-    let (app, _db, token, _user_id, _config) = build_authed_app("repeat_join@example.com").await;
+    let (app, _db, token, _user_id, _config) = build_authed_app("repeat_join").await;
 
     let create_response = app
         .clone()
@@ -431,7 +417,7 @@ async fn test_join_same_meeting_twice_does_not_duplicate_record() {
 
 #[tokio::test]
 async fn test_join_nonexistent_meeting_returns_404() {
-    let (app, db, token, _user_id, _config) = build_authed_app("join_404@example.com").await;
+    let (app, db, token, _user_id, _config) = build_authed_app("join_404").await;
     let meeting_no = find_nonexistent_meeting_no(&db).await;
 
     let response = app
@@ -452,8 +438,7 @@ async fn test_join_nonexistent_meeting_returns_404() {
 
 #[tokio::test]
 async fn test_join_before_scheduled_start_returns_409_with_code() {
-    let (app, _db, token, _user_id, _config) =
-        build_authed_app("join_not_started@example.com").await;
+    let (app, _db, token, _user_id, _config) = build_authed_app("join_not_started").await;
     let future = (Utc::now() + Duration::minutes(5)).to_rfc3339();
     let payload = format!(r#"{{"topic":"future","scheduledStartAt":"{}"}}"#, future);
 
@@ -495,8 +480,7 @@ async fn test_join_before_scheduled_start_returns_409_with_code() {
 
 #[tokio::test]
 async fn test_guest_join_requires_host_open_returns_409_with_code() {
-    let (app, _db, token, _user_id, _config) =
-        build_authed_app("guest_host_first@example.com").await;
+    let (app, _db, token, _user_id, _config) = build_authed_app("guest_host_first").await;
 
     let create_response = app
         .clone()
@@ -535,7 +519,7 @@ async fn test_guest_join_requires_host_open_returns_409_with_code() {
 
 #[tokio::test]
 async fn test_join_token_identity_is_jwt_user_id() {
-    let (app, _db, token, user_id, config) = build_authed_app("identity_join@example.com").await;
+    let (app, _db, token, user_id, config) = build_authed_app("identity_join").await;
 
     let create_response = app
         .clone()
@@ -585,17 +569,12 @@ async fn test_join_uses_user_display_name_when_participant_name_is_empty() {
     run_test_migrations(&db).await;
 
     let config = build_test_config();
-    let unique_email = format!("display_name_join+{}@example.com", Uuid::new_v4());
+    let unique_username = format!("display_name_join_{}", Uuid::new_v4());
     let display_name = "Display Join Name";
-    let user_id = create_test_user_with_display_name(&db, &unique_email, display_name).await;
-    let token = encode_user_token(user_id, &unique_email, &config.jwt_secret, 3600).unwrap();
+    let user_id = create_test_user_with_display_name(&db, &unique_username, display_name).await;
+    let token = encode_user_token(user_id, &unique_username, &config.jwt_secret, 3600).unwrap();
 
-    let state = AppState::with_livekit(
-        config.clone(),
-        db.clone(),
-        FakeLiveKitService::new(),
-        Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(config.clone(), db.clone(), FakeLiveKitService::new());
     let app = build_test_app_with_state(state);
 
     let create_response = app
@@ -644,17 +623,12 @@ async fn test_guest_join_denied_when_allow_guest_join_false() {
     let db = setup_test_db().await;
     run_test_migrations(&db).await;
 
-    let creator_email = format!("guest_denied_creator+{}@example.com", Uuid::new_v4());
-    let creator_user_id = create_test_user(&db, &creator_email).await;
+    let creator_username = format!("guest_denied_creator_{}", Uuid::new_v4());
+    let creator_user_id = create_test_user(&db, &creator_username).await;
     let meeting_no = find_nonexistent_meeting_no(&db).await;
     insert_meeting(&db, &meeting_no, creator_user_id).await;
 
-    let state = AppState::with_livekit(
-        build_test_config(),
-        db,
-        FakeLiveKitService::new(),
-        Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(build_test_config(), db, FakeLiveKitService::new());
     let app = build_test_app_with_state(state);
 
     let response = app
@@ -676,7 +650,7 @@ async fn test_guest_join_denied_when_allow_guest_join_false() {
 
 #[tokio::test]
 async fn test_guest_join_allowed_when_flag_true_and_guest_permissions_are_limited() {
-    let (app, db, token, _user_id, config) = build_authed_app("guest_allowed@example.com").await;
+    let (app, db, token, _user_id, config) = build_authed_app("guest_allowed").await;
 
     let create_response = app
         .clone()
@@ -745,12 +719,11 @@ async fn test_guest_join_allowed_when_flag_true_and_guest_permissions_are_limite
 
 #[tokio::test]
 async fn test_password_protection_requires_password_for_non_host_and_guest() {
-    let (app, db, host_token, _host_user_id, config) =
-        build_authed_app("meeting_pwd_host@example.com").await;
-    let member_email = format!("meeting_pwd_member+{}@example.com", Uuid::new_v4());
-    let member_user_id = create_test_user(&db, &member_email).await;
+    let (app, db, host_token, _host_user_id, config) = build_authed_app("meeting_pwd_host").await;
+    let member_username = format!("meeting_pwd_member_{}", Uuid::new_v4());
+    let member_user_id = create_test_user(&db, &member_username).await;
     let member_token =
-        encode_user_token(member_user_id, &member_email, &config.jwt_secret, 3600).unwrap();
+        encode_user_token(member_user_id, &member_username, &config.jwt_secret, 3600).unwrap();
 
     let scheduled = (Utc::now() - Duration::minutes(1)).to_rfc3339();
     let payload = format!(
@@ -866,12 +839,7 @@ async fn test_guest_join_nonexistent_meeting_returns_404() {
     run_test_migrations(&db).await;
     let meeting_no = find_nonexistent_meeting_no(&db).await;
 
-    let state = AppState::with_livekit(
-        build_test_config(),
-        db,
-        FakeLiveKitService::new(),
-        Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(build_test_config(), db, FakeLiveKitService::new());
     let app = build_test_app_with_state(state);
 
     let response = app
@@ -894,8 +862,8 @@ async fn test_guest_join_ended_meeting_returns_409() {
     let db = setup_test_db().await;
     run_test_migrations(&db).await;
 
-    let creator_email = format!("guest_ended_creator+{}@example.com", Uuid::new_v4());
-    let creator_user_id = create_test_user(&db, &creator_email).await;
+    let creator_username = format!("guest_ended_creator_{}", Uuid::new_v4());
+    let creator_user_id = create_test_user(&db, &creator_username).await;
     let meeting_no = find_nonexistent_meeting_no(&db).await;
     insert_meeting(&db, &meeting_no, creator_user_id).await;
     sqlx::query("UPDATE meetings SET status = 'ended', ended_at = NOW() WHERE meeting_no = $1")
@@ -904,12 +872,7 @@ async fn test_guest_join_ended_meeting_returns_409() {
         .await
         .unwrap();
 
-    let state = AppState::with_livekit(
-        build_test_config(),
-        db,
-        FakeLiveKitService::new(),
-        Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(build_test_config(), db, FakeLiveKitService::new());
     let app = build_test_app_with_state(state);
 
     let response = app
@@ -934,17 +897,12 @@ async fn test_leave_meeting_requires_auth() {
     let db = setup_test_db().await;
     run_test_migrations(&db).await;
 
-    let creator_email = format!("leave_auth_creator+{}@example.com", Uuid::new_v4());
-    let creator_user_id = create_test_user(&db, &creator_email).await;
+    let creator_username = format!("leave_auth_creator_{}", Uuid::new_v4());
+    let creator_user_id = create_test_user(&db, &creator_username).await;
     let meeting_no = find_nonexistent_meeting_no(&db).await;
     insert_meeting(&db, &meeting_no, creator_user_id).await;
 
-    let state = AppState::with_livekit(
-        build_test_config(),
-        db,
-        FakeLiveKitService::new(),
-        Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(build_test_config(), db, FakeLiveKitService::new());
     let app = build_test_app_with_state(state);
 
     let response = app
@@ -967,12 +925,12 @@ async fn test_leave_meeting_is_idempotent() {
     run_test_migrations(&temp_db).await;
 
     let config = build_test_config();
-    let unique_email = format!("leave_idempotent+{}@example.com", Uuid::new_v4());
-    let user_id = create_test_user(&temp_db, &unique_email).await;
+    let unique_username = format!("leave_idempotent_{}", Uuid::new_v4());
+    let user_id = create_test_user(&temp_db, &unique_username).await;
     let meeting_no = find_nonexistent_meeting_no(&temp_db).await;
     insert_meeting(&temp_db, &meeting_no, user_id).await;
 
-    let token = encode_user_token(user_id, &unique_email, &config.jwt_secret, 3600).unwrap();
+    let token = encode_user_token(user_id, &unique_username, &config.jwt_secret, 3600).unwrap();
     let room_name = format!("m-{}", meeting_no);
     let fake_livekit = FakeLiveKitService::new().with_participant(
         &room_name,
@@ -991,12 +949,7 @@ async fn test_leave_meeting_is_idempotent() {
         },
     );
 
-    let state = AppState::with_livekit(
-        config,
-        temp_db.clone(),
-        fake_livekit,
-        Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(config, temp_db.clone(), fake_livekit);
     let app = build_test_app_with_state(state);
 
     let first_response = app
@@ -1038,12 +991,12 @@ async fn test_leave_meeting_last_participant_ends_meeting_immediately() {
     run_test_migrations(&temp_db).await;
 
     let config = build_test_config();
-    let unique_email = format!("leave_ended+{}@example.com", Uuid::new_v4());
-    let user_id = create_test_user(&temp_db, &unique_email).await;
+    let unique_username = format!("leave_ended_{}", Uuid::new_v4());
+    let user_id = create_test_user(&temp_db, &unique_username).await;
     let meeting_no = find_nonexistent_meeting_no(&temp_db).await;
     insert_meeting(&temp_db, &meeting_no, user_id).await;
 
-    let token = encode_user_token(user_id, &unique_email, &config.jwt_secret, 3600).unwrap();
+    let token = encode_user_token(user_id, &unique_username, &config.jwt_secret, 3600).unwrap();
     let room_name = format!("m-{}", meeting_no);
     let fake_livekit = FakeLiveKitService::new().with_participant(
         &room_name,
@@ -1062,12 +1015,7 @@ async fn test_leave_meeting_last_participant_ends_meeting_immediately() {
         },
     );
 
-    let state = AppState::with_livekit(
-        config,
-        temp_db.clone(),
-        fake_livekit,
-        Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(config, temp_db.clone(), fake_livekit);
     let app = build_test_app_with_state(state);
 
     let leave_response = app
@@ -1096,15 +1044,16 @@ async fn test_leave_meeting_keeps_open_when_other_participants_remain() {
     run_test_migrations(&temp_db).await;
 
     let config = build_test_config();
-    let host_email = format!("leave_active_host+{}@example.com", Uuid::new_v4());
-    let host_user_id = create_test_user(&temp_db, &host_email).await;
-    let leaver_email = format!("leave_active_member+{}@example.com", Uuid::new_v4());
-    let leaver_user_id = create_test_user(&temp_db, &leaver_email).await;
+    let host_username = format!("leave_active_host_{}", Uuid::new_v4());
+    let host_user_id = create_test_user(&temp_db, &host_username).await;
+    let leaver_username = format!("leave_active_member_{}", Uuid::new_v4());
+    let leaver_user_id = create_test_user(&temp_db, &leaver_username).await;
     let other_user_id = Uuid::new_v4();
     let meeting_no = find_nonexistent_meeting_no(&temp_db).await;
     insert_meeting(&temp_db, &meeting_no, host_user_id).await;
 
-    let token = encode_user_token(leaver_user_id, &leaver_email, &config.jwt_secret, 3600).unwrap();
+    let token =
+        encode_user_token(leaver_user_id, &leaver_username, &config.jwt_secret, 3600).unwrap();
     let room_name = format!("m-{}", meeting_no);
     let fake_livekit = FakeLiveKitService::new()
         .with_participant(
@@ -1140,12 +1089,7 @@ async fn test_leave_meeting_keeps_open_when_other_participants_remain() {
             },
         );
 
-    let state = AppState::with_livekit(
-        config,
-        temp_db.clone(),
-        fake_livekit,
-        Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(config, temp_db.clone(), fake_livekit);
     let app = build_test_app_with_state(state);
 
     let leave_response = app
@@ -1173,13 +1117,13 @@ async fn test_leave_meeting_host_ends_meeting_even_when_others_remain() {
     run_test_migrations(&temp_db).await;
 
     let config = build_test_config();
-    let host_email = format!("leave_host_end+{}@example.com", Uuid::new_v4());
-    let host_user_id = create_test_user(&temp_db, &host_email).await;
+    let host_username = format!("leave_host_end_{}", Uuid::new_v4());
+    let host_user_id = create_test_user(&temp_db, &host_username).await;
     let other_user_id = Uuid::new_v4();
     let meeting_no = find_nonexistent_meeting_no(&temp_db).await;
     insert_meeting(&temp_db, &meeting_no, host_user_id).await;
 
-    let token = encode_user_token(host_user_id, &host_email, &config.jwt_secret, 3600).unwrap();
+    let token = encode_user_token(host_user_id, &host_username, &config.jwt_secret, 3600).unwrap();
     let room_name = format!("m-{}", meeting_no);
     let fake_livekit = FakeLiveKitService::new()
         .with_participant(
@@ -1215,12 +1159,7 @@ async fn test_leave_meeting_host_ends_meeting_even_when_others_remain() {
             },
         );
 
-    let state = AppState::with_livekit(
-        config,
-        temp_db.clone(),
-        fake_livekit,
-        Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(config, temp_db.clone(), fake_livekit);
     let app = build_test_app_with_state(state);
 
     let leave_response = app
@@ -1241,7 +1180,7 @@ async fn test_leave_meeting_host_ends_meeting_even_when_others_remain() {
 
 #[tokio::test]
 async fn test_cancel_meeting_by_host_sets_cancelled() {
-    let (app, db, token, _user_id, _config) = build_authed_app("cancel_host@example.com").await;
+    let (app, db, token, _user_id, _config) = build_authed_app("cancel_host").await;
 
     let create_response = app
         .clone()
@@ -1280,11 +1219,11 @@ async fn test_cancel_meeting_by_host_sets_cancelled() {
 #[tokio::test]
 async fn test_cancel_meeting_non_host_forbidden() {
     let (app, _db, host_token, _host_user_id, config) =
-        build_authed_app("cancel_non_host_owner@example.com").await;
-    let member_email = format!("cancel_non_host_member+{}@example.com", Uuid::new_v4());
-    let member_user_id = create_test_user(&_db, &member_email).await;
+        build_authed_app("cancel_non_host_owner").await;
+    let member_username = format!("cancel_non_host_member_{}", Uuid::new_v4());
+    let member_user_id = create_test_user(&_db, &member_username).await;
     let member_token =
-        encode_user_token(member_user_id, &member_email, &config.jwt_secret, 3600).unwrap();
+        encode_user_token(member_user_id, &member_username, &config.jwt_secret, 3600).unwrap();
 
     let create_response = app
         .clone()
@@ -1321,12 +1260,11 @@ async fn test_cancel_meeting_non_host_forbidden() {
 
 #[tokio::test]
 async fn test_list_host_meetings_returns_only_creator_meetings() {
-    let (app, _db, host_token, _host_user_id, config) =
-        build_authed_app("host_list@example.com").await;
-    let other_email = format!("host_list_other+{}@example.com", Uuid::new_v4());
-    let other_user_id = create_test_user(&_db, &other_email).await;
+    let (app, _db, host_token, _host_user_id, config) = build_authed_app("host_list").await;
+    let other_username = format!("host_list_other_{}", Uuid::new_v4());
+    let other_user_id = create_test_user(&_db, &other_username).await;
     let other_token =
-        encode_user_token(other_user_id, &other_email, &config.jwt_secret, 3600).unwrap();
+        encode_user_token(other_user_id, &other_username, &config.jwt_secret, 3600).unwrap();
 
     let payload = build_create_meeting_payload(false);
     for _ in 0..2 {
@@ -1382,8 +1320,8 @@ async fn test_list_host_meetings_returns_only_creator_meetings() {
 async fn test_lifecycle_no_join_timeout_marks_scheduled_meeting_ended() {
     let db = setup_test_db().await;
     run_test_migrations(&db).await;
-    let creator_email = format!("lifecycle_no_join+{}@example.com", Uuid::new_v4());
-    let creator_user_id = create_test_user(&db, &creator_email).await;
+    let creator_username = format!("lifecycle_no_join_{}", Uuid::new_v4());
+    let creator_user_id = create_test_user(&db, &creator_username).await;
     let meeting_no = find_nonexistent_meeting_no(&db).await;
 
     insert_meeting_with_state(
@@ -1420,8 +1358,8 @@ async fn test_lifecycle_no_join_timeout_marks_scheduled_meeting_ended() {
 async fn test_lifecycle_empty_timeout_marks_open_meeting_ended() {
     let db = setup_test_db().await;
     run_test_migrations(&db).await;
-    let creator_email = format!("lifecycle_empty_timeout+{}@example.com", Uuid::new_v4());
-    let creator_user_id = create_test_user(&db, &creator_email).await;
+    let creator_username = format!("lifecycle_empty_timeout_{}", Uuid::new_v4());
+    let creator_user_id = create_test_user(&db, &creator_username).await;
     let meeting_no = find_nonexistent_meeting_no(&db).await;
     let opened_at = Utc::now() - Duration::minutes(30);
 
@@ -1458,8 +1396,8 @@ async fn test_lifecycle_empty_timeout_marks_open_meeting_ended() {
 async fn test_lifecycle_non_empty_room_clears_empty_since() {
     let db = setup_test_db().await;
     run_test_migrations(&db).await;
-    let creator_email = format!("lifecycle_non_empty+{}@example.com", Uuid::new_v4());
-    let creator_user_id = create_test_user(&db, &creator_email).await;
+    let creator_username = format!("lifecycle_non_empty_{}", Uuid::new_v4());
+    let creator_user_id = create_test_user(&db, &creator_username).await;
     let meeting_no = find_nonexistent_meeting_no(&db).await;
     let room_name = format!("m-{}", meeting_no);
     let opened_at = Utc::now() - Duration::minutes(30);
@@ -1512,8 +1450,8 @@ async fn test_lifecycle_non_empty_room_clears_empty_since() {
 async fn test_lifecycle_skips_when_advisory_lock_is_held_by_another_session() {
     let db = setup_test_db().await;
     run_test_migrations(&db).await;
-    let creator_email = format!("lifecycle_lock_skip+{}@example.com", Uuid::new_v4());
-    let creator_user_id = create_test_user(&db, &creator_email).await;
+    let creator_username = format!("lifecycle_lock_skip_{}", Uuid::new_v4());
+    let creator_user_id = create_test_user(&db, &creator_username).await;
     let meeting_no = find_nonexistent_meeting_no(&db).await;
 
     insert_meeting_with_state(
@@ -1557,7 +1495,7 @@ async fn test_lifecycle_skips_when_advisory_lock_is_held_by_another_session() {
 #[tokio::test]
 async fn test_host_meetings_default_excludes_ended_and_cancelled() {
     let (app, db, host_token, host_user_id, _config) =
-        build_authed_app("host_default_filter@example.com").await;
+        build_authed_app("host_default_filter").await;
     let now = Utc::now();
 
     let no1 = find_nonexistent_meeting_no(&db).await;
@@ -1652,8 +1590,7 @@ async fn test_host_meetings_default_excludes_ended_and_cancelled() {
 
 #[tokio::test]
 async fn test_host_meetings_include_ended_returns_all_statuses() {
-    let (app, db, host_token, host_user_id, _config) =
-        build_authed_app("host_include_ended@example.com").await;
+    let (app, db, host_token, host_user_id, _config) = build_authed_app("host_include_ended").await;
     let now = Utc::now();
 
     for status in ["scheduled", "open", "ended", "cancelled"] {
@@ -1704,8 +1641,7 @@ async fn test_host_meetings_include_ended_returns_all_statuses() {
 
 #[tokio::test]
 async fn test_host_meetings_invalid_status_returns_400_with_code() {
-    let (app, _db, token, _user_id, _config) =
-        build_authed_app("host_invalid_status@example.com").await;
+    let (app, _db, token, _user_id, _config) = build_authed_app("host_invalid_status").await;
 
     let response = app
         .oneshot(
@@ -1725,8 +1661,7 @@ async fn test_host_meetings_invalid_status_returns_400_with_code() {
 
 #[tokio::test]
 async fn test_host_meetings_time_range_filters_by_scheduled_start_at() {
-    let (app, db, token, host_user_id, _config) =
-        build_authed_app("host_time_range@example.com").await;
+    let (app, db, token, host_user_id, _config) = build_authed_app("host_time_range").await;
     let now = Utc::now();
     let inside_no = find_nonexistent_meeting_no(&db).await;
     let outside_no = find_nonexistent_meeting_no(&db).await;
@@ -1784,8 +1719,7 @@ async fn test_host_meetings_time_range_filters_by_scheduled_start_at() {
 
 #[tokio::test]
 async fn test_cancel_open_meeting_returns_409_with_not_cancellable_code() {
-    let (app, _db, token, _user_id, _config) =
-        build_authed_app("cancel_open_meeting@example.com").await;
+    let (app, _db, token, _user_id, _config) = build_authed_app("cancel_open_meeting").await;
     let create_response = app
         .clone()
         .oneshot(
@@ -1838,8 +1772,7 @@ async fn test_cancel_open_meeting_returns_409_with_not_cancellable_code() {
 
 #[tokio::test]
 async fn test_create_meeting_password_length_boundaries() {
-    let (app, _db, token, _user_id, _config) =
-        build_authed_app("password_boundary@example.com").await;
+    let (app, _db, token, _user_id, _config) = build_authed_app("password_boundary").await;
     let scheduled = (Utc::now() - Duration::minutes(1)).to_rfc3339();
 
     let too_short = format!(

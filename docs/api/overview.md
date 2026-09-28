@@ -18,7 +18,7 @@
 Content-Type: application/json
 ```
 
-用户登录/注册接口会返回用户 JWT，可放入请求头：
+用户登录接口会返回用户 JWT，可放入请求头：
 
 ```
 Authorization: Bearer <token>
@@ -35,7 +35,7 @@ Authorization: Bearer <token>
 
 ### 1. 用户 JWT（账号体系）
 
-- 获取方式：`POST /api/auth/login` 或 `POST /api/auth/register`
+- 获取方式：`POST /api/auth/login`（用户名不存在时自动创建账号）
 - 刷新方式：`POST /api/auth/refresh`（需携带当前用户 JWT）
 - 默认有效期：`604800` 秒（7 天，可通过 `JWT_EXPIRATION_SECS` 配置）
 - 用途：账号体系身份凭证（后续可用于受保护接口）
@@ -83,13 +83,12 @@ HTTP 状态码：`4xx` 或 `5xx`
 | 状态码 | 描述 | 常见场景 |
 |--------|------|---------|
 | 200 | OK | 请求成功 |
-| 201 | Created | 资源创建成功（注册、创建房间） |
-| 400 | Bad Request | 请求参数无效、JSON 格式错误、验证码错误 |
-| 401 | Unauthorized | 登录认证失败 |
+| 201 | Created | 资源创建成功（首次登录创建账号、创建房间） |
+| 400 | Bad Request | 请求参数无效、JSON 格式错误、新账号的用户名或密码不符合规则 |
+| 401 | Unauthorized | 登录认证失败（用户名已被占用或密码错误） |
 | 403 | Forbidden | 已认证但无权限（如非主持人踢人/结束业务会议） |
 | 404 | Not Found | 资源不存在 |
-| 409 | Conflict | 资源冲突（邮箱已注册） |
-| 429 | Too Many Requests | 请求过于频繁（验证码发送限制） |
+| 409 | Conflict | 资源冲突（如会议状态不允许该操作） |
 | 500 | Internal Server Error | 服务器内部错误 |
 
 ---
@@ -98,26 +97,15 @@ HTTP 状态码：`4xx` 或 `5xx`
 
 ```json
 {
-  "error": "Invalid email format",
-  "code": null
+  "error": "Password must contain both letters and digits",
+  "code": "WEAK_PASSWORD"
 }
 ```
 
 ```json
 {
-  "error": "Invalid email or password"
-}
-```
-
-```json
-{
-  "error": "Email is already registered"
-}
-```
-
-```json
-{
-  "error": "Please wait 42 seconds before requesting another code"
+  "error": "Username is taken or password is incorrect",
+  "code": "INVALID_CREDENTIALS"
 }
 ```
 
@@ -161,22 +149,3 @@ HTTP 状态码：`4xx` 或 `5xx`
 |------|--------|------|
 | `JWT_SECRET` | `your-super-secret-jwt-key-change-in-production` | JWT 签名密钥 |
 | `JWT_EXPIRATION_SECS` | `604800` | 用户 Token 有效期（秒） |
-
-### 验证码配置
-
-| 变量 | 默认值 | 描述 |
-|------|--------|------|
-| `CODE_HMAC_SECRET` | `your-super-secret-hmac-key-change-in-production` | 验证码 HMAC 密钥 |
-| `CODE_LENGTH` | `6` | 验证码长度 |
-| `CODE_RATE_LIMIT_SECS` | `60` | 验证码发送间隔（秒） |
-| `CODE_EXPIRATION_SECS` | `600` | 验证码有效期（秒） |
-
-### SMTP 配置
-
-| 变量 | 默认值 | 描述 |
-|------|--------|------|
-| `SMTP_HOST` | `smtp.example.com` | SMTP 服务器地址 |
-| `SMTP_PORT` | `587` | SMTP 端口 |
-| `SMTP_SENDER` | `noreply@example.com` | 发件人邮箱 |
-| `SMTP_PASSWORD` | 空字符串 | SMTP 密码或授权码 |
-| `SMTP_USE_SSL` | `false` | 是否使用 SSL/TLS |

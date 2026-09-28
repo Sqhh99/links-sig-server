@@ -2,7 +2,7 @@
 //!
 //! This module contains business logic services:
 //! - `auth_service`: LiveKit token generation
-//! - `user_auth_service`: User registration, login, verification
+//! - `user_auth_service`: Username/password login (creates accounts on first use)
 //! - `meeting_service`: Meeting/room operations, participant management
 //! - `meeting_registry_service`: Business meeting numbers and meeting records
 //! - `meeting_lifecycle_service`: Automatic scheduled/open meeting transitions

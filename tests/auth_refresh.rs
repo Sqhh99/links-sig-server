@@ -12,18 +12,16 @@ use axum::{
     body::Body,
     http::{header, Request, StatusCode},
 };
-use std::sync::Arc;
 use tower::ServiceExt;
 use uuid::Uuid;
 
 use links_sig_rust_server::auth::{decode_user_token, encode_user_token};
-use links_sig_rust_server::integrations::FakeEmailSender;
 use support::{
     body_to_json, build_test_app_with_state, build_test_config, cleanup_test_user,
     run_test_migrations, setup_test_db, FakeLiveKitService,
 };
 
-async fn create_test_user(db: &sqlx::PgPool, email: &str, password: &str) -> Uuid {
+async fn create_test_user(db: &sqlx::PgPool, username: &str, password: &str) -> Uuid {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
     let password_hash = argon2
@@ -31,20 +29,21 @@ async fn create_test_user(db: &sqlx::PgPool, email: &str, password: &str) -> Uui
         .unwrap()
         .to_string();
 
-    let user_id: Uuid =
-        sqlx::query_scalar("INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id")
-            .bind(email)
-            .bind(&password_hash)
-            .fetch_one(db)
-            .await
-            .unwrap();
+    let user_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id",
+    )
+    .bind(username)
+    .bind(&password_hash)
+    .fetch_one(db)
+    .await
+    .unwrap();
 
     user_id
 }
 
 async fn create_test_user_with_display_name(
     db: &sqlx::PgPool,
-    email: &str,
+    username: &str,
     password: &str,
     display_name: &str,
 ) -> Uuid {
@@ -56,9 +55,9 @@ async fn create_test_user_with_display_name(
         .to_string();
 
     let user_id: Uuid = sqlx::query_scalar(
-        "INSERT INTO users (email, password_hash, display_name) VALUES ($1, $2, $3) RETURNING id",
+        "INSERT INTO users (username, password_hash, display_name) VALUES ($1, $2, $3) RETURNING id",
     )
-    .bind(email)
+    .bind(username)
     .bind(&password_hash)
     .bind(display_name)
     .fetch_one(db)
@@ -73,15 +72,15 @@ async fn test_refresh_returns_200_and_new_token() {
     let db = setup_test_db().await;
     run_test_migrations(&db).await;
 
-    let test_email = format!("refresh_ok+{}@example.com", Uuid::new_v4());
+    let test_username = format!("refresh_ok_{}", Uuid::new_v4());
     let test_password = "securePassword123";
-    cleanup_test_user(&db, &test_email).await;
-    let user_id = create_test_user(&db, &test_email, test_password).await;
+    cleanup_test_user(&db, &test_username).await;
+    let user_id = create_test_user(&db, &test_username, test_password).await;
 
     let config = build_test_config();
     let old_token = encode_user_token(
         user_id,
-        &test_email,
+        &test_username,
         &config.jwt_secret,
         config.jwt_expiration_secs,
     )
@@ -91,7 +90,6 @@ async fn test_refresh_returns_200_and_new_token() {
         config.clone(),
         db.clone(),
         FakeLiveKitService::new(),
-        Arc::new(FakeEmailSender::new()),
     );
     let app = build_test_app_with_state(state);
 
@@ -111,16 +109,16 @@ async fn test_refresh_returns_200_and_new_token() {
     let json = body_to_json(response.into_body()).await;
 
     assert_eq!(json["userId"], user_id.to_string());
-    assert_eq!(json["email"], test_email);
+    assert_eq!(json["username"], test_username);
     assert_eq!(json["expiresInSecs"], config.jwt_expiration_secs);
     assert!(json["token"].as_str().is_some());
 
     let refreshed_token = json["token"].as_str().unwrap();
     let claims = decode_user_token(refreshed_token, &config.jwt_secret).unwrap();
     assert_eq!(claims.sub, user_id.to_string());
-    assert_eq!(claims.email, test_email);
+    assert_eq!(claims.username, test_username);
 
-    cleanup_test_user(&db, &test_email).await;
+    cleanup_test_user(&db, &test_username).await;
 }
 
 #[tokio::test]
@@ -132,7 +130,6 @@ async fn test_refresh_requires_auth() {
         build_test_config(),
         db,
         FakeLiveKitService::new(),
-        Arc::new(FakeEmailSender::new()),
     );
     let app = build_test_app_with_state(state);
 
@@ -159,7 +156,6 @@ async fn test_refresh_invalid_token_returns_401() {
         build_test_config(),
         db,
         FakeLiveKitService::new(),
-        Arc::new(FakeEmailSender::new()),
     );
     let app = build_test_app_with_state(state);
 
@@ -185,17 +181,17 @@ async fn test_refresh_returns_display_name_when_set() {
     let db = setup_test_db().await;
     run_test_migrations(&db).await;
 
-    let test_email = format!("refresh_display+{}@example.com", Uuid::new_v4());
+    let test_username = format!("refresh_display_{}", Uuid::new_v4());
     let display_name = "Refresh User";
-    cleanup_test_user(&db, &test_email).await;
+    cleanup_test_user(&db, &test_username).await;
     let user_id =
-        create_test_user_with_display_name(&db, &test_email, "securePassword123", display_name)
+        create_test_user_with_display_name(&db, &test_username, "securePassword123", display_name)
             .await;
 
     let config = build_test_config();
     let old_token = encode_user_token(
         user_id,
-        &test_email,
+        &test_username,
         &config.jwt_secret,
         config.jwt_expiration_secs,
     )
@@ -205,7 +201,6 @@ async fn test_refresh_returns_display_name_when_set() {
         config,
         db.clone(),
         FakeLiveKitService::new(),
-        Arc::new(FakeEmailSender::new()),
     );
     let app = build_test_app_with_state(state);
 
@@ -225,5 +220,5 @@ async fn test_refresh_returns_display_name_when_set() {
     let json = body_to_json(response.into_body()).await;
     assert_eq!(json["displayName"], display_name);
 
-    cleanup_test_user(&db, &test_email).await;
+    cleanup_test_user(&db, &test_username).await;
 }

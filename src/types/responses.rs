@@ -105,35 +105,17 @@ pub struct ListParticipantsResponse {
 // Auth Responses
 // ============================================================================
 
-/// Response for verification code request
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RequestCodeResponse {
-    pub message: String,
-    /// Seconds until another code can be requested
-    pub retry_after_secs: u64,
-}
-
-/// Response for successful registration
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RegisterResponse {
-    pub user_id: Uuid,
-    pub email: String,
-    pub token: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
-}
-
 /// Response for successful login
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoginResponse {
     pub user_id: Uuid,
-    pub email: String,
+    pub username: String,
     pub token: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    /// True when this login created the account
+    pub account_created: bool,
 }
 
 /// Response for refreshing user token
@@ -141,7 +123,7 @@ pub struct LoginResponse {
 #[serde(rename_all = "camelCase")]
 pub struct RefreshTokenResponse {
     pub user_id: Uuid,
-    pub email: String,
+    pub username: String,
     pub token: String,
     pub expires_in_secs: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -252,6 +234,6 @@ pub struct HostMeetingListResponse {
 #[allow(dead_code)]
 pub struct UserProfileResponse {
     pub user_id: Uuid,
-    pub email: String,
+    pub username: String,
     pub created_at: DateTime<Utc>,
 }

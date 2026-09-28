@@ -38,8 +38,6 @@ links-sig-server/
 ├── tests/                     # 集成测试
 │   └── support/               # 测试支持工具（模拟数据库、LiveKit）
 │
-├── examples/                  # 代码示例
-│
 └── target/                    # 编译输出目录（Cargo 自动生成）
 ```
 
@@ -53,21 +51,20 @@ links-sig-server/
 - **user_jwt.rs**: 用户特定的 JWT 处理
 
 ### 处理器模块 (`src/handlers/`)
-- **auth.rs**: 用户注册、登录、令牌刷新等认证端点
+- **auth.rs**: 用户登录（首次登录即创建账号）、令牌刷新等认证端点
 - **health.rs**: 服务健康检查端点
 - **meeting.rs**: 会议相关的 CRUD 操作端点
 
 ### 服务层 (`src/services/`)
 实现业务逻辑和 LiveKit 集成：
 - **auth_service.rs**: 认证业务逻辑
-- **user_auth_service.rs**: 用户认证细节
+- **user_auth_service.rs**: 用户名密码登录、新账号的用户名与密码校验
 - **meeting_service.rs**: 会议核心逻辑
 - **meeting_registry_service.rs**: 会议注册和查询
 - **meeting_lifecycle_service.rs**: 会议的启动、进行中、结束等状态管理
 
 ### 集成模块 (`src/integrations/`)
 - **db.rs**: PostgreSQL 数据库操作（使用 sqlx）
-- **email.rs**: 邮件发送集成
 - **livekit.rs**: LiveKit API 通信
 
 ### 类型模块 (`src/types/`)
@@ -85,6 +82,7 @@ links-sig-server/
 3. **003_add_users_display_name.sql** - 用户显示名字段
 4. **004_add_meetings_allow_guest_join.sql** - 访客加入权限
 5. **005_add_scheduled_meeting_fields.sql** - 计划会议时间字段
+6. **006_username_login.sql** - 以用户名替代邮箱作为登录标识，删除邮箱验证码表
 
 ---
 
@@ -121,7 +119,7 @@ links-sig-server/
 
 详细的 API 文档在 `docs/api/` 目录：
 - **health.md** - 健康检查接口
-- **auth.md** - 用户认证接口（登录、注册、刷新）
+- **auth.md** - 用户认证接口（登录、刷新）
 - **meetings.md** - 会议管理接口
 - **rooms.md** - 房间管理接口
 - **participants.md** - 参与者管理接口
@@ -132,7 +130,7 @@ links-sig-server/
 ## 测试
 
 集成测试位于 `tests/` 目录，覆盖：
-- 认证流程（登录、注册、刷新）
+- 认证流程（登录、刷新）
 - 健康检查
 - 会议和房间操作
 - 令牌生成

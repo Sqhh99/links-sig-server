@@ -24,7 +24,6 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use links_sig_rust_server::auth::encode_user_token;
-use links_sig_rust_server::integrations::FakeEmailSender;
 use links_sig_rust_server::types::{LiveKitParticipant, LiveKitRoom};
 use links_sig_rust_server::AppState;
 use support::{
@@ -38,11 +37,11 @@ async fn setup() -> sqlx::PgPool {
     db
 }
 
-async fn create_test_user(db: &sqlx::PgPool, email: &str) -> Uuid {
+async fn create_test_user(db: &sqlx::PgPool, username: &str) -> Uuid {
     let user_id = Uuid::new_v4();
-    sqlx::query("INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3)")
+    sqlx::query("INSERT INTO users (id, username, password_hash) VALUES ($1, $2, $3)")
         .bind(user_id)
-        .bind(email)
+        .bind(username)
         .bind("test-password-hash")
         .execute(db)
         .await
@@ -100,9 +99,9 @@ async fn find_nonexistent_meeting_no(db: &sqlx::PgPool) -> String {
     panic!("Failed to find a non-existent meeting number for test");
 }
 
-fn build_user_token(user_id: Uuid, email: &str) -> String {
+fn build_user_token(user_id: Uuid, username: &str) -> String {
     let config = build_test_config();
-    encode_user_token(user_id, email, &config.jwt_secret, 3600).unwrap()
+    encode_user_token(user_id, username, &config.jwt_secret, 3600).unwrap()
 }
 
 // ============================================================================
@@ -438,11 +437,11 @@ async fn test_end_room_returns_200() {
 async fn test_kick_participant_business_room_requires_host() {
     let db = setup().await;
 
-    let host_email = format!("host+{}@example.com", Uuid::new_v4());
-    let guest_email = format!("guest+{}@example.com", Uuid::new_v4());
-    let host_user_id = create_test_user(&db, &host_email).await;
-    let guest_user_id = create_test_user(&db, &guest_email).await;
-    let guest_token = build_user_token(guest_user_id, &guest_email);
+    let host_username = format!("host_{}", Uuid::new_v4());
+    let guest_username = format!("guest_{}", Uuid::new_v4());
+    let host_user_id = create_test_user(&db, &host_username).await;
+    let guest_user_id = create_test_user(&db, &guest_username).await;
+    let guest_token = build_user_token(guest_user_id, &guest_username);
     let meeting_no = find_nonexistent_meeting_no(&db).await;
     let room_name = format!("m-{}", meeting_no);
     insert_meeting(&db, &meeting_no, host_user_id).await;
@@ -464,12 +463,7 @@ async fn test_kick_participant_business_room_requires_host() {
         },
     );
 
-    let state = AppState::with_livekit(
-        build_test_config(),
-        db,
-        fake_livekit,
-        std::sync::Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(build_test_config(), db, fake_livekit);
     let app = build_test_app_with_state(state);
 
     let response = app
@@ -494,11 +488,11 @@ async fn test_kick_participant_business_room_requires_host() {
 async fn test_kick_participant_business_room_host_allowed() {
     let db = setup().await;
 
-    let host_email = format!("host2+{}@example.com", Uuid::new_v4());
-    let guest_email = format!("guest2+{}@example.com", Uuid::new_v4());
-    let host_user_id = create_test_user(&db, &host_email).await;
-    let guest_user_id = create_test_user(&db, &guest_email).await;
-    let host_token = build_user_token(host_user_id, &host_email);
+    let host_username = format!("host2_{}", Uuid::new_v4());
+    let guest_username = format!("guest2_{}", Uuid::new_v4());
+    let host_user_id = create_test_user(&db, &host_username).await;
+    let guest_user_id = create_test_user(&db, &guest_username).await;
+    let host_token = build_user_token(host_user_id, &host_username);
     let meeting_no = find_nonexistent_meeting_no(&db).await;
     let room_name = format!("m-{}", meeting_no);
     insert_meeting(&db, &meeting_no, host_user_id).await;
@@ -520,12 +514,7 @@ async fn test_kick_participant_business_room_host_allowed() {
         },
     );
 
-    let state = AppState::with_livekit(
-        build_test_config(),
-        db,
-        fake_livekit,
-        std::sync::Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(build_test_config(), db, fake_livekit);
     let app = build_test_app_with_state(state);
 
     let response = app
@@ -550,11 +539,11 @@ async fn test_kick_participant_business_room_host_allowed() {
 async fn test_end_business_room_requires_host() {
     let db = setup().await;
 
-    let host_email = format!("host3+{}@example.com", Uuid::new_v4());
-    let guest_email = format!("guest3+{}@example.com", Uuid::new_v4());
-    let host_user_id = create_test_user(&db, &host_email).await;
-    let guest_user_id = create_test_user(&db, &guest_email).await;
-    let guest_token = build_user_token(guest_user_id, &guest_email);
+    let host_username = format!("host3_{}", Uuid::new_v4());
+    let guest_username = format!("guest3_{}", Uuid::new_v4());
+    let host_user_id = create_test_user(&db, &host_username).await;
+    let guest_user_id = create_test_user(&db, &guest_username).await;
+    let guest_token = build_user_token(guest_user_id, &guest_username);
     let meeting_no = find_nonexistent_meeting_no(&db).await;
     let room_name = format!("m-{}", meeting_no);
     insert_meeting(&db, &meeting_no, host_user_id).await;
@@ -573,12 +562,7 @@ async fn test_end_business_room_requires_host() {
         active_recording: Some(false),
     });
 
-    let state = AppState::with_livekit(
-        build_test_config(),
-        db,
-        fake_livekit,
-        std::sync::Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(build_test_config(), db, fake_livekit);
     let app = build_test_app_with_state(state);
 
     let response = app
@@ -600,9 +584,9 @@ async fn test_end_business_room_requires_host() {
 async fn test_end_business_room_marks_meeting_ended() {
     let db = setup().await;
 
-    let host_email = format!("host4+{}@example.com", Uuid::new_v4());
-    let host_user_id = create_test_user(&db, &host_email).await;
-    let host_token = build_user_token(host_user_id, &host_email);
+    let host_username = format!("host4_{}", Uuid::new_v4());
+    let host_user_id = create_test_user(&db, &host_username).await;
+    let host_token = build_user_token(host_user_id, &host_username);
     let meeting_no = find_nonexistent_meeting_no(&db).await;
     let room_name = format!("m-{}", meeting_no);
     insert_meeting(&db, &meeting_no, host_user_id).await;
@@ -621,12 +605,7 @@ async fn test_end_business_room_marks_meeting_ended() {
         active_recording: Some(false),
     });
 
-    let state = AppState::with_livekit(
-        build_test_config(),
-        db.clone(),
-        fake_livekit,
-        std::sync::Arc::new(FakeEmailSender::new()),
-    );
+    let state = AppState::with_livekit(build_test_config(), db.clone(), fake_livekit);
     let app = build_test_app_with_state(state);
 
     let response = app

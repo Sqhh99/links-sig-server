@@ -98,32 +98,11 @@ pub struct HostMeetingsQuery {
 // Auth Requests
 // ============================================================================
 
-/// Request verification code for registration
-#[derive(Debug, Clone, Deserialize)]
-pub struct RequestRegisterCodeRequest {
-    /// Email address to send the verification code to
-    pub email: String,
-}
-
-/// Complete registration with verification code
-#[derive(Debug, Clone, Deserialize)]
-pub struct RegisterRequest {
-    /// Email address
-    pub email: String,
-    /// Verification code received via email
-    pub code: String,
-    /// Password (will be hashed)
-    pub password: String,
-    /// Optional profile display name
-    #[serde(default, rename = "displayName")]
-    pub display_name: Option<String>,
-}
-
-/// Login request
+/// Login request; an unused username creates the account
 #[derive(Debug, Clone, Deserialize)]
 pub struct LoginRequest {
-    /// Email address
-    pub email: String,
+    /// Username
+    pub username: String,
     /// Password
     pub password: String,
 }

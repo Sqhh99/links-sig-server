@@ -6,9 +6,7 @@ use axum::Router;
 use http_body_util::BodyExt;
 use hyper::body::Bytes;
 use sqlx::PgPool;
-use std::sync::Arc;
 
-use links_sig_rust_server::integrations::FakeEmailSender;
 use links_sig_rust_server::{build_api_router, AppState, Config};
 
 use super::fake_livekit::FakeLiveKitService;
@@ -18,47 +16,16 @@ pub fn build_test_config() -> Config {
     Config::for_tests()
 }
 
-/// Build a test AppState with FakeLiveKitService and FakeEmailSender
+/// Build a test AppState with FakeLiveKitService
 ///
 /// Requires a database connection pool (use `setup_test_db` to get one)
 pub fn build_test_state(db: PgPool) -> AppState {
-    let config = build_test_config();
-    let fake_livekit = FakeLiveKitService::new();
-    let fake_email = FakeEmailSender::new();
-    AppState::with_services(config, db, fake_livekit, fake_email)
+    build_test_state_with_livekit(db, FakeLiveKitService::new())
 }
 
 /// Build a test AppState with a custom FakeLiveKitService
 pub fn build_test_state_with_livekit(db: PgPool, fake_livekit: FakeLiveKitService) -> AppState {
-    let config = build_test_config();
-    let fake_email = FakeEmailSender::new();
-    AppState::with_services(config, db, fake_livekit, fake_email)
-}
-
-/// Build a test AppState with a custom FakeEmailSender
-pub fn build_test_state_with_email(db: PgPool, fake_email: FakeEmailSender) -> AppState {
-    let config = build_test_config();
-    let fake_livekit = FakeLiveKitService::new();
-    AppState::with_services(config, db, fake_livekit, fake_email)
-}
-
-/// Build a test AppState with custom services
-pub fn build_test_state_with_services(
-    db: PgPool,
-    fake_livekit: FakeLiveKitService,
-    fake_email: FakeEmailSender,
-) -> AppState {
-    let config = build_test_config();
-    AppState::with_services(config, db, fake_livekit, fake_email)
-}
-
-/// Build a test AppState that returns the email sender for verification
-pub fn build_test_state_with_email_capture(db: PgPool) -> (AppState, Arc<FakeEmailSender>) {
-    let config = build_test_config();
-    let fake_livekit = FakeLiveKitService::new();
-    let fake_email = Arc::new(FakeEmailSender::new());
-    let state = AppState::with_livekit(config, db, fake_livekit, fake_email.clone());
-    (state, fake_email)
+    AppState::with_livekit(build_test_config(), db, fake_livekit)
 }
 
 /// Build a test application router with state

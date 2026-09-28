@@ -89,16 +89,6 @@ impl AppError {
     pub fn conflict_code(msg: impl Into<String>, code: &'static str) -> Self {
         Self::new_with_code(StatusCode::CONFLICT, msg, code)
     }
-
-    /// Create a too many requests error.
-    pub fn too_many_requests(msg: impl Into<String>) -> Self {
-        Self::new(StatusCode::TOO_MANY_REQUESTS, msg)
-    }
-
-    /// Create a too many requests error with a stable code.
-    pub fn too_many_requests_code(msg: impl Into<String>, code: &'static str) -> Self {
-        Self::new_with_code(StatusCode::TOO_MANY_REQUESTS, msg, code)
-    }
 }
 
 impl std::fmt::Display for AppError {

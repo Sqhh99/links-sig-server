@@ -64,28 +64,23 @@ pub async fn cleanup_test_data(pool: &PgPool) {
         .await
         .expect("Failed to clean meetings");
 
-    sqlx::query("DELETE FROM email_verification_codes")
-        .execute(pool)
-        .await
-        .expect("Failed to clean email_verification_codes");
-
     sqlx::query("DELETE FROM users")
         .execute(pool)
         .await
         .expect("Failed to clean users");
 }
 
-/// Clean up test data for a specific email
-pub async fn cleanup_test_user(pool: &PgPool, email: &str) {
+/// Clean up test data for a specific username
+pub async fn cleanup_test_user(pool: &PgPool, username: &str) {
     sqlx::query(
         r#"
         DELETE FROM meeting_participants mp
         USING users u
         WHERE mp.user_id = u.id
-          AND u.email = $1
+          AND LOWER(u.username) = LOWER($1)
         "#,
     )
-    .bind(email)
+    .bind(username)
     .execute(pool)
     .await
     .expect("Failed to clean meeting_participants");
@@ -95,22 +90,16 @@ pub async fn cleanup_test_user(pool: &PgPool, email: &str) {
         DELETE FROM meetings m
         USING users u
         WHERE m.creator_user_id = u.id
-          AND u.email = $1
+          AND LOWER(u.username) = LOWER($1)
         "#,
     )
-    .bind(email)
+    .bind(username)
     .execute(pool)
     .await
     .expect("Failed to clean meetings");
 
-    sqlx::query("DELETE FROM email_verification_codes WHERE email = $1")
-        .bind(email)
-        .execute(pool)
-        .await
-        .expect("Failed to clean email_verification_codes");
-
-    sqlx::query("DELETE FROM users WHERE email = $1")
-        .bind(email)
+    sqlx::query("DELETE FROM users WHERE LOWER(username) = LOWER($1)")
+        .bind(username)
         .execute(pool)
         .await
         .expect("Failed to clean users");

@@ -9,9 +9,7 @@ use axum_extra::{
 use crate::auth::decode_user_token;
 use crate::services::{AuthService, UserAuthService};
 use crate::state::AppState;
-use crate::types::{
-    AppError, LoginRequest, RegisterRequest, RequestRegisterCodeRequest, TokenRequest,
-};
+use crate::types::{AppError, LoginRequest, TokenRequest};
 
 // ============================================================================
 // LiveKit Token Handler
@@ -51,101 +49,45 @@ pub async fn handle_get_token(
 // User Authentication Handlers
 // ============================================================================
 
-/// Request verification code for registration
-///
-/// POST /api/auth/register/request-code
-///
-/// Request body:
-/// ```json
-/// {
-///   "email": "user@example.com"
-/// }
-/// ```
-///
-/// Response (200 OK):
-/// ```json
-/// {
-///   "message": "Verification code sent to your email",
-///   "retryAfterSecs": 60
-/// }
-/// ```
-///
-/// Errors:
-/// - 400: Invalid email format
-/// - 409: Email already registered
-/// - 429: Too many requests (rate limited)
-pub async fn handle_request_register_code(
-    State(state): State<AppState>,
-    Json(req): Json<RequestRegisterCodeRequest>,
-) -> Result<impl IntoResponse, AppError> {
-    let response =
-        UserAuthService::request_register_code(&state.db, &*state.email, &state.config, req)
-            .await?;
-    Ok((StatusCode::OK, Json(response)))
-}
-
-/// Complete registration with verification code
-///
-/// POST /api/auth/register
-///
-/// Request body:
-/// ```json
-/// {
-///   "email": "user@example.com",
-///   "code": "123456",
-///   "password": "securePassword123"
-/// }
-/// ```
-///
-/// Response (201 Created):
-/// ```json
-/// {
-///   "userId": "550e8400-e29b-41d4-a716-446655440000",
-///   "email": "user@example.com",
-///   "token": "eyJ..."
-/// }
-/// ```
-///
-/// Errors:
-/// - 400: Invalid email, weak password, or invalid/expired code
-/// - 409: Email already registered
-pub async fn handle_register(
-    State(state): State<AppState>,
-    Json(req): Json<RegisterRequest>,
-) -> Result<impl IntoResponse, AppError> {
-    let response = UserAuthService::register(&state.db, &state.config, req).await?;
-    Ok((StatusCode::CREATED, Json(response)))
-}
-
-/// Login with email and password
+/// Log in with username and password
 ///
 /// POST /api/auth/login
 ///
+/// The first login with an unused username creates the account, so there is
+/// no separate registration endpoint.
+///
 /// Request body:
 /// ```json
 /// {
-///   "email": "user@example.com",
+///   "username": "alice",
 ///   "password": "securePassword123"
 /// }
 /// ```
 ///
-/// Response (200 OK):
+/// Response (200 OK for an existing account, 201 Created for a new one):
 /// ```json
 /// {
 ///   "userId": "550e8400-e29b-41d4-a716-446655440000",
-///   "email": "user@example.com",
-///   "token": "eyJ..."
+///   "username": "alice",
+///   "token": "eyJ...",
+///   "accountCreated": false
 /// }
 /// ```
 ///
 /// Errors:
-/// - 401: Invalid email or password
+/// - 400: Missing fields, or a new account whose username or password breaks the rules
+/// - 401: The username exists and the password does not match
 pub async fn handle_login(
     State(state): State<AppState>,
     Json(req): Json<LoginRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let response = UserAuthService::login(&state.db, &state.config, req).await?;
-    Ok((StatusCode::OK, Json(response)))
+    let status = if response.account_created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(response)))
 }
 
 /// Refresh user JWT token
@@ -159,7 +101,7 @@ pub async fn handle_login(
 /// ```json
 /// {
 ///   "userId": "550e8400-e29b-41d4-a716-446655440000",
-///   "email": "user@example.com",
+///   "username": "alice",
 ///   "token": "eyJ...",
 ///   "expiresInSecs": 604800
 /// }
