@@ -12,8 +12,7 @@ use crate::handlers::{
     handle_end_room, handle_get_token, handle_guest_join_meeting, handle_health,
     handle_join_meeting, handle_kick_participant, handle_leave_meeting,
     handle_list_my_host_meetings, handle_list_my_meeting_records, handle_list_participants,
-    handle_list_rooms, handle_login, handle_refresh_token, handle_register,
-    handle_request_register_code,
+    handle_list_rooms, handle_login, handle_refresh_token,
 };
 use crate::state::AppState;
 
@@ -28,9 +27,7 @@ use crate::state::AppState;
 /// - DELETE /api/rooms/{room_name}/participants/{identity} - Kick participant
 /// - POST /api/rooms/{room_name}/end - End meeting
 /// - GET /api/health - Health check
-/// - POST /api/auth/register/request-code - Request verification code
-/// - POST /api/auth/register - Complete registration
-/// - POST /api/auth/login - Login
+/// - POST /api/auth/login - Login (creates the account on first use)
 /// - POST /api/auth/refresh - Refresh user token
 /// - POST /api/meetings - Create meeting with meeting number
 /// - POST /api/meetings/{meeting_no}/join - Join meeting by meeting number
@@ -45,8 +42,6 @@ pub fn build_api_router() -> Router<AppState> {
 
     // User auth routes
     let user_auth_routes = Router::new()
-        .route("/register/request-code", post(handle_request_register_code))
-        .route("/register", post(handle_register))
         .route("/login", post(handle_login))
         .route("/refresh", post(handle_refresh_token));
 

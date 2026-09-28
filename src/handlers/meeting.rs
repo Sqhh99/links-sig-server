@@ -117,7 +117,7 @@ pub async fn handle_create_meeting(
     auth_header: Option<TypedHeader<Authorization<Bearer>>>,
     req: Option<Json<CreateMeetingRequest>>,
 ) -> Result<impl IntoResponse, AppError> {
-    let (user_id, _email) = parse_user_from_auth_header(auth_header, &state)?;
+    let (user_id, _username) = parse_user_from_auth_header(auth_header, &state)?;
     let payload = req
         .map(|Json(inner)| inner)
         .unwrap_or_else(CreateMeetingRequest::default);
@@ -147,13 +147,13 @@ pub async fn handle_join_meeting(
     Path(meeting_no): Path<String>,
     Json(req): Json<JoinMeetingRequest>,
 ) -> Result<impl IntoResponse, AppError> {
-    let (user_id, user_email) = parse_user_from_auth_header(auth_header, &state)?;
+    let (user_id, username) = parse_user_from_auth_header(auth_header, &state)?;
     let response = MeetingRegistryService::join_meeting(
         &state.db,
         &state.config,
         &meeting_no,
         user_id,
-        &user_email,
+        &username,
         req,
     )
     .await?;
@@ -182,7 +182,7 @@ pub async fn handle_leave_meeting(
     auth_header: Option<TypedHeader<Authorization<Bearer>>>,
     Path(meeting_no): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    let (user_id, _user_email) = parse_user_from_auth_header(auth_header, &state)?;
+    let (user_id, _username) = parse_user_from_auth_header(auth_header, &state)?;
     let response =
         MeetingRegistryService::leave_meeting(&state.db, &*state.livekit, &meeting_no, user_id)
             .await?;
@@ -197,7 +197,7 @@ pub async fn handle_cancel_meeting(
     auth_header: Option<TypedHeader<Authorization<Bearer>>>,
     Path(meeting_no): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    let (user_id, _user_email) = parse_user_from_auth_header(auth_header, &state)?;
+    let (user_id, _username) = parse_user_from_auth_header(auth_header, &state)?;
     let response = MeetingRegistryService::cancel_meeting(&state.db, &meeting_no, user_id).await?;
     Ok((StatusCode::OK, Json(response)))
 }
@@ -210,7 +210,7 @@ pub async fn handle_list_my_meeting_records(
     auth_header: Option<TypedHeader<Authorization<Bearer>>>,
     Query(query): Query<MeetingRecordsQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    let (user_id, _email) = parse_user_from_auth_header(auth_header, &state)?;
+    let (user_id, _username) = parse_user_from_auth_header(auth_header, &state)?;
     let response =
         MeetingRegistryService::list_user_records(&state.db, user_id, query.page, query.page_size)
             .await?;
@@ -225,7 +225,7 @@ pub async fn handle_list_my_host_meetings(
     auth_header: Option<TypedHeader<Authorization<Bearer>>>,
     Query(query): Query<HostMeetingsQuery>,
 ) -> Result<impl IntoResponse, AppError> {
-    let (user_id, _email) = parse_user_from_auth_header(auth_header, &state)?;
+    let (user_id, _username) = parse_user_from_auth_header(auth_header, &state)?;
     let response = MeetingRegistryService::list_host_meetings(&state.db, user_id, query).await?;
     Ok((StatusCode::OK, Json(response)))
 }
@@ -243,7 +243,7 @@ fn parse_user_from_auth_header(
     let user_id =
         Uuid::parse_str(&claims.sub).map_err(|_| AppError::unauthorized("Invalid user token"))?;
 
-    Ok((user_id, claims.email))
+    Ok((user_id, claims.username))
 }
 
 async fn ensure_business_meeting_host(
@@ -257,7 +257,7 @@ async fn ensure_business_meeting_host(
         return Ok(());
     };
 
-    let (user_id, _email) = parse_user_from_auth_header(auth_header, state)?;
+    let (user_id, _username) = parse_user_from_auth_header(auth_header, state)?;
     if user_id != creator_user_id {
         return Err(AppError::forbidden(
             "Only meeting host can perform this action",

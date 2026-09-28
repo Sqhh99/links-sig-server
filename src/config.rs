@@ -57,32 +57,6 @@ pub struct Config {
     pub jwt_secret: String,
     /// JWT token expiration in seconds (default: 7 days)
     pub jwt_expiration_secs: u64,
-
-    // ========================================================================
-    // Verification Code Settings
-    // ========================================================================
-    /// HMAC secret for verification code hashing
-    pub code_hmac_secret: String,
-    /// Verification code length (default: 6)
-    pub code_length: usize,
-    /// Rate limit: minimum seconds between sending codes (default: 60)
-    pub code_rate_limit_secs: u64,
-    /// Code expiration in seconds (default: 600 = 10 minutes)
-    pub code_expiration_secs: u64,
-
-    // ========================================================================
-    // SMTP Settings
-    // ========================================================================
-    /// SMTP host
-    pub smtp_host: String,
-    /// SMTP port
-    pub smtp_port: u16,
-    /// SMTP sender email address
-    pub smtp_sender: String,
-    /// SMTP password or API key
-    pub smtp_password: String,
-    /// Use SSL/TLS for SMTP
-    pub smtp_use_ssl: bool,
 }
 
 impl Config {
@@ -133,35 +107,6 @@ impl Config {
                 .unwrap_or_else(|_| "604800".to_string()) // 7 days
                 .parse()
                 .unwrap_or(604800),
-
-            // Verification code settings
-            code_hmac_secret: env::var("CODE_HMAC_SECRET")
-                .unwrap_or_else(|_| "your-super-secret-hmac-key-change-in-production".to_string()),
-            code_length: env::var("CODE_LENGTH")
-                .unwrap_or_else(|_| "6".to_string())
-                .parse()
-                .unwrap_or(6),
-            code_rate_limit_secs: env::var("CODE_RATE_LIMIT_SECS")
-                .unwrap_or_else(|_| "60".to_string())
-                .parse()
-                .unwrap_or(60),
-            code_expiration_secs: env::var("CODE_EXPIRATION_SECS")
-                .unwrap_or_else(|_| "600".to_string()) // 10 minutes
-                .parse()
-                .unwrap_or(600),
-
-            // SMTP settings
-            smtp_host: env::var("SMTP_HOST").unwrap_or_else(|_| "smtp.example.com".to_string()),
-            smtp_port: env::var("SMTP_PORT")
-                .unwrap_or_else(|_| "587".to_string())
-                .parse()
-                .unwrap_or(587),
-            smtp_sender: env::var("SMTP_SENDER")
-                .unwrap_or_else(|_| "noreply@example.com".to_string()),
-            smtp_password: env::var("SMTP_PASSWORD").unwrap_or_else(|_| "".to_string()),
-            smtp_use_ssl: env::var("SMTP_USE_SSL")
-                .map(|v| v == "true")
-                .unwrap_or(false),
         }
     }
 
@@ -188,15 +133,6 @@ impl Config {
             meeting_lifecycle_lock_key: 424242,
             jwt_secret: "test-jwt-secret-key".to_string(),
             jwt_expiration_secs: 604800,
-            code_hmac_secret: "test-hmac-secret-key".to_string(),
-            code_length: 6,
-            code_rate_limit_secs: 60,
-            code_expiration_secs: 600,
-            smtp_host: "smtp.test.local".to_string(),
-            smtp_port: 587,
-            smtp_sender: "noreply@test.local".to_string(),
-            smtp_password: "test-password".to_string(),
-            smtp_use_ssl: false,
         }
     }
 }

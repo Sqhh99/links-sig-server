@@ -20,15 +20,17 @@ pub struct UserAccessTokenClaims {
     pub nbf: u64,
     /// Subject (User ID)
     pub sub: String,
-    /// User email
-    pub email: String,
+    /// Username. Tokens issued before usernames replaced emails carry the same
+    /// value under `email`, so they stay valid until they expire.
+    #[serde(alias = "email")]
+    pub username: String,
 }
 
 /// Encode a user access token
 ///
 /// # Arguments
 /// * `user_id` - The user's UUID
-/// * `email` - The user's email address
+/// * `username` - The user's username
 /// * `secret` - JWT signing secret
 /// * `expiration_secs` - Token validity duration in seconds
 ///
@@ -36,7 +38,7 @@ pub struct UserAccessTokenClaims {
 /// JWT token string
 pub fn encode_user_token(
     user_id: Uuid,
-    email: &str,
+    username: &str,
     secret: &str,
     expiration_secs: u64,
 ) -> Result<String, AppError> {
@@ -50,7 +52,7 @@ pub fn encode_user_token(
         iat: now,
         nbf: now,
         sub: user_id.to_string(),
-        email: email.to_string(),
+        username: username.to_string(),
     };
 
     let header = Header::new(Algorithm::HS256);
@@ -113,19 +115,43 @@ mod tests {
     #[test]
     fn test_encode_decode_user_token() {
         let user_id = Uuid::new_v4();
-        let email = "test@example.com";
+        let username = "alice";
 
-        let token = encode_user_token(user_id, email, TEST_SECRET, 3600).unwrap();
+        let token = encode_user_token(user_id, username, TEST_SECRET, 3600).unwrap();
         let claims = decode_user_token(&token, TEST_SECRET).unwrap();
 
         assert_eq!(claims.sub, user_id.to_string());
-        assert_eq!(claims.email, email);
+        assert_eq!(claims.username, username);
+    }
+
+    #[test]
+    fn test_decode_token_with_legacy_email_claim() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let legacy_claims = serde_json::json!({
+            "exp": now + 3600,
+            "iat": now,
+            "nbf": now,
+            "sub": Uuid::new_v4().to_string(),
+            "email": "user@example.com",
+        });
+        let token = encode(
+            &Header::new(Algorithm::HS256),
+            &legacy_claims,
+            &EncodingKey::from_secret(TEST_SECRET.as_bytes()),
+        )
+        .unwrap();
+
+        let claims = decode_user_token(&token, TEST_SECRET).unwrap();
+        assert_eq!(claims.username, "user@example.com");
     }
 
     #[test]
     fn test_decode_with_wrong_secret_fails() {
         let user_id = Uuid::new_v4();
-        let token = encode_user_token(user_id, "test@example.com", TEST_SECRET, 3600).unwrap();
+        let token = encode_user_token(user_id, "alice", TEST_SECRET, 3600).unwrap();
 
         let result = decode_user_token(&token, "wrong-secret");
         assert!(result.is_err());
@@ -135,7 +161,7 @@ mod tests {
     fn test_expired_token_fails() {
         let user_id = Uuid::new_v4();
         // Create a token that expired 1 second ago (expiration_secs = 0 won't work, so we manually test)
-        let token = encode_user_token(user_id, "test@example.com", TEST_SECRET, 0).unwrap();
+        let token = encode_user_token(user_id, "alice", TEST_SECRET, 0).unwrap();
 
         // Token with 0 expiration is effectively expired immediately
         let result = decode_user_token(&token, TEST_SECRET);
@@ -147,7 +173,7 @@ mod tests {
     #[test]
     fn test_extract_user_id() {
         let user_id = Uuid::new_v4();
-        let token = encode_user_token(user_id, "test@example.com", TEST_SECRET, 3600).unwrap();
+        let token = encode_user_token(user_id, "alice", TEST_SECRET, 3600).unwrap();
         let claims = decode_user_token(&token, TEST_SECRET).unwrap();
         let extracted_id = extract_user_id(&claims).unwrap();
 

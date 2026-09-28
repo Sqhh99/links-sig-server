@@ -16,6 +16,3 @@ pub mod types;
 pub use config::Config;
 pub use routes::build_api_router;
 pub use state::AppState;
-
-// Re-export integrations for testing
-pub use integrations::{EmailSender, FakeEmailSender};

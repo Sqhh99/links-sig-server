@@ -54,19 +54,8 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # Password hashing
 argon2 = "0.5"
 
-# Random number generation (for verification codes)
+# Random number generation (for meeting numbers)
 rand = "0.8"
-
-# HMAC-SHA256 for verification code hashing
-hmac = "0.12"
-sha2 = "0.10"
-hex = "0.4"
-
-# Email sending
-lettre = { version = "0.11", features = ["tokio1-native-tls", "builder"] }
-
-# Error handling
-thiserror = "2"
 
 [dev-dependencies]
 http-body-util = "0.1"

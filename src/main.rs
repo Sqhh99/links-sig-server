@@ -10,7 +10,7 @@
 //! - `routes.rs` - Centralized route definitions
 //! - `handlers/` - HTTP request handlers (thin layer)
 //! - `services/` - Business logic layer
-//! - `integrations/` - External service adapters (LiveKit, Database, Email)
+//! - `integrations/` - External service adapters (LiveKit, Database)
 //! - `auth/` - JWT authentication and extractors
 //! - `types/` - Request/Response DTOs and error types
 
@@ -26,7 +26,6 @@ mod types;
 use axum::Router;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tower_http::{
     cors::{Any, CorsLayer},
     services::{ServeDir, ServeFile},
@@ -36,7 +35,7 @@ use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use crate::config::Config;
-use crate::integrations::{create_pool, run_migrations, SmtpEmailSender};
+use crate::integrations::{create_pool, run_migrations};
 use crate::routes::build_api_router;
 use crate::services::MeetingLifecycleService;
 use crate::state::AppState;
@@ -71,11 +70,8 @@ async fn main() {
         info!("Database migrations completed");
     }
 
-    // Initialize email sender
-    let email = Arc::new(SmtpEmailSender::new(&config).expect("Failed to initialize email sender"));
-
     // Create application state
-    let state = AppState::new(config.clone(), db, email);
+    let state = AppState::new(config.clone(), db);
     let lifecycle_state = state.clone();
 
     tokio::spawn(async move {
@@ -118,7 +114,6 @@ fn log_startup_info(config: &Config) {
         config.meeting_lifecycle_interval_secs
     );
     info!("Database: {}", mask_connection_string(&config.database_url));
-    info!("SMTP Host: {}", config.smtp_host);
 }
 
 /// Mask sensitive parts of connection string

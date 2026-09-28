@@ -21,8 +21,6 @@ cp .env.deploy.example .env.deploy
 - `LIVEKIT_API_KEY`
 - `LIVEKIT_API_SECRET`
 - `JWT_SECRET`
-- `CODE_HMAC_SECRET`
-- `SMTP_*`
 - `APP_BASE_URL`
 
 注意：
@@ -79,5 +77,5 @@ curl http://127.0.0.1:8081/health
 
 - 数据库地址是否可从容器内访问
 - LiveKit 地址是否可从容器内访问
-- 密钥和 SMTP 配置是否完整
+- `JWT_SECRET`、LiveKit 密钥等配置是否完整
 - 反向代理是否把外部 HTTPS 正确转发到容器 HTTP 端口
