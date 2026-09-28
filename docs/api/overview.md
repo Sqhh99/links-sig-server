@@ -143,7 +143,7 @@ HTTP 状态码：`4xx` 或 `5xx`
 | 变量 | 默认值 | 描述 |
 |------|--------|------|
 | `LIVEKIT_URL` | `http://localhost:7880` | LiveKit API 地址 |
-| `LIVEKIT_WS_URL` | `ws://localhost:7880` | LiveKit WebSocket 地址 |
+| `LIVEKIT_WS_URL` | `ws://127.0.0.1:7880` | LiveKit WebSocket 地址 |
 | `LIVEKIT_API_KEY` | `devkey` | LiveKit API Key |
 | `LIVEKIT_API_SECRET` | `secret` | LiveKit API Secret |
 

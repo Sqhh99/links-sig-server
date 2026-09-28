@@ -93,7 +93,7 @@ impl Config {
             livekit_url: env::var("LIVEKIT_URL")
                 .unwrap_or_else(|_| "http://localhost:7880".to_string()),
             livekit_ws_url: env::var("LIVEKIT_WS_URL")
-                .unwrap_or_else(|_| "ws://localhost:7880".to_string()),
+                .unwrap_or_else(|_| "ws://127.0.0.1:7880".to_string()),
             api_key: env::var("LIVEKIT_API_KEY").unwrap_or_else(|_| "devkey".to_string()),
             api_secret: env::var("LIVEKIT_API_SECRET").unwrap_or_else(|_| "secret".to_string()),
 
@@ -172,7 +172,7 @@ impl Config {
     pub fn for_tests() -> Self {
         Self {
             livekit_url: "http://localhost:7880".to_string(),
-            livekit_ws_url: "ws://localhost:7880".to_string(),
+            livekit_ws_url: "ws://127.0.0.1:7880".to_string(),
             api_key: "test-api-key".to_string(),
             api_secret: "test-api-secret".to_string(),
             server_port: 8081,
