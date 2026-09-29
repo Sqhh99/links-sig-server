@@ -1,0 +1,17 @@
+# LiveKit server config, mounted by compose.yaml.
+#
+# API keys are not stored here: compose.yaml passes them in through
+# LIVEKIT_KEYS, built from LIVEKIT_API_KEY / LIVEKIT_API_SECRET in .env.
+# The advertised media address comes from NODE_IP (LIVEKIT_NODE_IP in .env).
+
+port: 7880
+
+rtc:
+  # ICE over TCP, used when UDP is blocked.
+  tcp_port: 7881
+  # All UDP media multiplexed on one port, so Docker only has to publish one.
+  udp_port: 7882
+  use_external_ip: false
+
+logging:
+  level: info

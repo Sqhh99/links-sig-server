@@ -1,0 +1,110 @@
+# Links backend in one command: PostgreSQL + LiveKit + links-sig-server.
+#
+#   cd docker
+#   cp .env.example .env      # then fill in the required values
+#   docker compose up -d --build
+#
+# Everything you are expected to change lives in .env. See README.md in this
+# directory for logs, configuration and troubleshooting.
+
+name: links
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-links_sig}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in docker/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-links_sig}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      # Loopback only: for psql and for `cargo run` on this machine.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging: *default-logging
+
+  livekit:
+    image: livekit/livekit-server:v1.13.7
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    environment:
+      # Keys come from .env so the server and LiveKit can never disagree.
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in docker/.env}"
+      # The address LiveKit advertises for media. The container's own IP is not
+      # reachable from clients, so this must be an address clients can reach.
+      NODE_IP: ${LIVEKIT_NODE_IP:-127.0.0.1}
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    # Host and container ports must match: LiveKit advertises these numbers to
+    # clients. To change them, edit livekit.yaml and this list together.
+    ports:
+      - "7880:7880/tcp"
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+    logging: *default-logging
+
+  server:
+    build:
+      context: ..
+    image: links-sig-server:local
+    # Run under tini so `docker compose stop` does not wait out the 10 s timeout.
+    init: true
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-links_sig}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-links_sig}
+      LIVEKIT_URL: http://livekit:7880
+      LIVEKIT_WS_URL: ${LIVEKIT_WS_URL:-ws://127.0.0.1:7880}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET in docker/.env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in docker/.env}
+      JWT_EXPIRATION_SECS: ${JWT_EXPIRATION_SECS:-604800}
+      APP_BASE_URL: ${APP_BASE_URL:-http://127.0.0.1:8081}
+      MEETING_LIFECYCLE_INTERVAL_SECS: ${MEETING_LIFECYCLE_INTERVAL_SECS:-60}
+    ports:
+      - "${SERVER_PORT:-8081}:8081"
+    logging: *default-logging
+
+  # Database for `cargo test`. Only started when named explicitly:
+  #   docker compose up -d postgres-test
+  # Data lives in tmpfs; the tests run the migrations themselves.
+  postgres-test:
+    image: postgres:16-alpine
+    profiles: ["test"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: links_sig_test
+      POSTGRES_PASSWORD: links_sig_test_password
+      POSTGRES_DB: links_sig_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U links_sig_test -d links_sig_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging: *default-logging
+
+volumes:
+  postgres_data:
+    # Override in .env to reuse an existing volume, e.g. the one the old
+    # docker/postgres-docker setup created (see README.md).
+    name: ${POSTGRES_VOLUME:-links_postgres_data}
