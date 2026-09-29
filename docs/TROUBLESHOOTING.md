@@ -9,11 +9,11 @@
 ```
 Failed to connect to test database after retries.
 TEST_DATABASE_URL=postgres://links_sig_test:links_sig_test_password@localhost:5433/links_sig_test.
-Hint: start test DB with `docker compose up -d postgres-test`.
+Hint: start test DB with `docker compose -f docker/compose.yaml up -d postgres-test`.
 Last error: pool timed out while waiting for an open connection
 ```
 
-即使 `docker compose up -d postgres-test` 已执行、容器状态为 healthy，测试仍然失败。
+即使已在 `docker/` 目录执行 `docker compose up -d postgres-test`、容器状态为 healthy，测试仍然失败。
 
 ### 根本原因
 
@@ -46,7 +46,7 @@ Test-NetConnection -ComputerName 127.0.0.1 -Port 5433
 ### 预防措施
 
 1. **所有数据库连接地址统一使用 `127.0.0.1`**，不要使用 `localhost`。
-2. 如果必须使用 `localhost`，可在 Docker Compose 中为 IPv6 显式绑定端口：
+2. 如果必须使用 `localhost`，可在 `docker/compose.yaml` 中为 IPv6 显式绑定端口：
    ```yaml
    ports:
      - "127.0.0.1:5433:5432"
@@ -79,27 +79,29 @@ cargo sqlx migrate run
 验证迁移状态：
 
 ```powershell
-docker exec links-sig-postgres-test psql -U links_sig_test -d links_sig_test -c "SELECT version, description FROM _sqlx_migrations ORDER BY version;"
+# 在 docker/ 目录执行
+docker compose exec postgres-test psql -U links_sig_test -d links_sig_test -c "SELECT version, description FROM _sqlx_migrations ORDER BY version;"
 ```
 
 ### 预防措施
 
 1. 添加新迁移文件后，确认 CI 和本地测试数据库都能正确执行。
-2. 如果测试数据库状态异常，可以重建：
+2. 如果测试数据库状态异常，在 `docker/` 目录重启它即可。测试库的数据放在 tmpfs 里，重启后是一个空库：
    ```powershell
-   docker compose down -v postgres-test
-   docker compose up -d postgres-test
+   docker compose restart postgres-test
    ```
 
 ---
 
 ## 常用命令速查
 
+`docker compose` 命令都在 `docker/` 目录执行。更多命令见 [docker/README.md](../docker/README.md)。
+
 | 操作 | 命令 |
 |------|------|
 | 启动测试数据库 | `docker compose up -d postgres-test` |
-| 停止并清除测试数据 | `docker compose down -v postgres-test` |
-| 检查容器状态 | `docker ps -a --filter "name=links-sig-postgres-test"` |
+| 清空测试数据（重启即重置） | `docker compose restart postgres-test` |
+| 检查容器状态 | `docker compose ps postgres-test` |
 | 检查端口连通性 | `Test-NetConnection -ComputerName 127.0.0.1 -Port 5433` |
 | 手动运行迁移 | `$env:DATABASE_URL="postgres://...@127.0.0.1:5433/..."; cargo sqlx migrate run` |
 | 运行全部测试 | `cargo test` |

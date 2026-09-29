@@ -5,15 +5,15 @@ links-sig-server/
 ├── Cargo.toml                 # Rust 项目配置文件
 ├── Dockerfile                 # Docker 镜像构建配置
 │
-├── docker/                    # Docker 编排配置
-│   ├── links-sig-server/      # 应用部署配置
-│   ├── livekit-docker/        # LiveKit 服务配置
-│   └── postgres-docker/       # PostgreSQL 数据库配置
+├── docker/                    # Docker 一键启动（PostgreSQL + LiveKit + 本服务）
+│   ├── compose.yaml           # 编排文件
+│   ├── .env.example           # 配置模板，复制为 .env 使用
+│   ├── livekit.yaml           # LiveKit 配置
+│   └── README.md              # 启动、日志、配置说明
 │
 ├── docs/                      # 项目文档
 │   ├── api/                   # API 接口文档
 │   ├── CONTRIBUTING.md        # 贡献指南
-│   ├── DEPLOYMENT.md          # 部署指南
 │   └── TROUBLESHOOTING.md     # 故障排查
 │
 ├── migrations/                # 数据库迁移脚本（SQL）
@@ -106,12 +106,10 @@ links-sig-server/
 
 ### Docker
 - **Dockerfile** - 主应用镜像
-- **docker/postgres-docker/** - 数据库服务
-- **docker/livekit-docker/** - LiveKit 服务
-- **docker/links-sig-server/docker-compose.deploy.yml** - 生产编排
+- **docker/compose.yaml** - PostgreSQL、LiveKit 和本服务的一体化编排，另含测试库 `postgres-test`
 
 ### 文档
-参考 `docs/DEPLOYMENT.md` 了解详细的部署步骤。
+参考 `docker/README.md` 了解启动、日志、配置和部署。
 
 ---
 
@@ -151,11 +149,8 @@ cargo test
 # 启动开发服务器
 cargo run
 
-# 构建 Docker 镜像
-docker build -t links-sig-server .
-
-# 使用 Docker Compose 运行完整服务栈
-docker-compose -f docker/links-sig-server/docker-compose.deploy.yml up
+# 用 Docker 启动完整服务栈（先把 docker/.env.example 复制为 docker/.env 并填好）
+cd docker && docker compose up -d --build
 ```
 
-更多详情参考 `docs/CONTRIBUTING.md` 和 `docs/DEPLOYMENT.md`。
+更多详情参考 `docs/CONTRIBUTING.md` 和 `docker/README.md`。

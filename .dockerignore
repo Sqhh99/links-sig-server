@@ -1,10 +1,15 @@
+# The image only needs Cargo.toml, Cargo.lock, src/, migrations/ and static/.
 .git
+.github
 .gitignore
+.dockerignore
+.cargo
 .env
-.env.deploy
+.env.*
 target
 docs
 tests
 examples
-docker-compose.yml
-docker-compose.deploy.yml
+docker
+Dockerfile
+*.md

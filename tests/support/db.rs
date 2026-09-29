@@ -34,7 +34,7 @@ pub async fn setup_test_db() -> PgPool {
     panic!(
         "Failed to connect to test database after retries. \
 TEST_DATABASE_URL={}.\n\
-Hint: start test DB with `docker compose up -d postgres-test`.\n\
+Hint: start test DB with `docker compose -f docker/compose.yaml up -d postgres-test`.\n\
 Last error: {}",
         database_url,
         last_error
